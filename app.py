@@ -148,7 +148,7 @@ INDEX_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Control Proyectos v2.4 Mobile-First</title>
+    <title>Control Proyectos - Gestor de Proyectos</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
@@ -217,8 +217,9 @@ INDEX_HTML = """
 <body class="bg-slate-100 font-sans text-slate-800 flex flex-col min-h-screen">
     <nav class="bg-slate-900 text-white p-4 shadow-xl sticky top-0 z-40">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <h1 class="text-lg md:text-xl font-bold flex items-center gap-2">
-                <i class="fa-solid fa-chart-line text-emerald-400"></i> <span class="hidden xs:inline">Gestor Gerencial</span><span class="inline xs:hidden">Gestor</span>
+            <h1 class="text-sm sm:text-lg md:text-xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-chart-line text-emerald-400"></i>
+                <span>Gestor de Proyectos</span>
             </h1>
             <div class="text-[10px] md:text-xs text-slate-400">v2.4 | Optimizado Móvil</div>
         </div>
