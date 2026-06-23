@@ -7,7 +7,6 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = "clave_gerencial_proyectos_2024"
 
-# Base de datos en memoria optimizada con el nuevo flujo de Inventario de Recursos Financieros
 PROYECTOS_DB = {
     "demo": {
         "id": "demo",
@@ -27,6 +26,7 @@ PROYECTOS_DB = {
                 "id": "act-1",
                 "nombre": "Topografía y Nivelación",
                 "descripcion": "Estudio de suelos y marcado de límites de vía.",
+                "presupuesto_tentativo": 10000.0,
                 "estado": "Completada",
                 "fecha_inicio": "2024-01-20",
                 "fecha_fin": "2024-02-15",
@@ -39,6 +39,7 @@ PROYECTOS_DB = {
                 "id": "act-2",
                 "nombre": "Remoción de Capa Asfáltica",
                 "descripcion": "Demolición de asfalto antiguo mediante fresado.",
+                "presupuesto_tentativo": 15000.0,
                 "estado": "Iniciada",
                 "fecha_inicio": "2024-03-01",
                 "fecha_fin": None,
@@ -50,6 +51,7 @@ PROYECTOS_DB = {
                 "id": "act-3",
                 "nombre": "Estudio de Impacto Ambiental",
                 "descripcion": "Evaluación de ecosistemas colindantes.",
+                "presupuesto_tentativo": 5000.0,
                 "estado": "Pendiente",
                 "fecha_inicio": None,
                 "fecha_fin": None,
@@ -77,11 +79,13 @@ def calcular_metricas(proyecto):
     iniciadas = 0
     has_gantt_tasks = False
     
-    # Declaración básica de Mermaid GANTT
+    # Declaración básica de Mermaid GANTT con secciones dedicadas
     gantt_code = "gantt\ndateFormat YYYY-MM-DD\ntitle Cronograma de Actividades\nsection Actividades Activas\n"
     
+    actividades_calculadas = []
+    
     for act in proyecto["actividades"]:
-        # El costo se calcula dependiente de si es mano de obra (monto directo) o material (precio * cantidad)
+        # El subtotal se calcula dependiendo de si es mano de obra (monto) o material (precio * cantidad)
         costo_act = 0.0
         for r in act["recursos"]:
             if r["tipo"] == "mano_de_obra":
@@ -91,7 +95,7 @@ def calcular_metricas(proyecto):
                 
         gasto_total += costo_act
         
-        # Conteo para Kanban y métricas
+        # Conteo de estados
         if act["estado"] == "Completada": 
             completadas += 1
         elif act["estado"] == "Iniciada": 
@@ -110,6 +114,18 @@ def calcular_metricas(proyecto):
             else:
                 gantt_code += f"  {nombre_limpio} :{status_part}{f_ini}, 15d\n"
 
+        # Cálculo de presupuesto tentativo vs real de la actividad
+        presupuesto_tentativo = float(act.get("presupuesto_tentativo", 0.0))
+        balance = presupuesto_tentativo - costo_act
+        cumplimiento_pct = (costo_act / presupuesto_tentativo * 100) if presupuesto_tentativo > 0 else 0
+        
+        act_calc = act.copy()
+        act_calc["subtotal_costo"] = costo_act
+        act_calc["balance"] = balance
+        act_calc["cumplimiento_pct"] = min(cumplimiento_pct, 100)
+        act_calc["cumplimiento_pct_real"] = cumplimiento_pct
+        actividades_calculadas.append(act_calc)
+
     ppto = float(proyecto["presupuesto"])
     return {
         "gasto_total": gasto_total,
@@ -122,20 +138,64 @@ def calcular_metricas(proyecto):
             "pendientes": len(proyecto["actividades"]) - completadas - iniciadas
         },
         "gantt_code": gantt_code,
-        "has_gantt_tasks": has_gantt_tasks
+        "has_gantt_tasks": has_gantt_tasks,
+        "actividades_calculadas": actividades_calculadas
     }
 
 INDEX_HTML = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8"><title>Control Proyectos v2.2</title>
+    <meta charset="UTF-8"><title>Control Proyectos v2.3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-        mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+        mermaid.initialize({ 
+            startOnLoad: false, 
+            theme: 'neutral',
+            gantt: {
+                titlePadding: 15,
+                barHeight: 25,
+                barGap: 5,
+                gridLineStartPadding: 25,
+                fontSize: 11,
+                numberSectionHeaderLines: 1,
+                axisFormat: '%Y-%m-%d'
+            }
+        });
+        window.mermaid = mermaid;
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .mermaid svg {
+            max-width: 100% !important;
+            height: auto !important;
+        }
+        /* Color personalizado para actividades FINALIZADAS (done) en el GANTT */
+        .mermaid rect.taskDone {
+            fill: #10b981 !important;
+            stroke: #059669 !important;
+            fill-opacity: 0.9 !important;
+        }
+        /* Color personalizado para actividades INICIADAS (active) en el GANTT */
+        .mermaid rect.taskActive {
+            fill: #3b82f6 !important;
+            stroke: #1d4ed8 !important;
+            fill-opacity: 0.9 !important;
+        }
+        /* Estilos de tipografía en el GANTT */
+        .mermaid text.taskText {
+            fill: #ffffff !important;
+            font-family: ui-sans-serif, system-ui, sans-serif !important;
+            font-size: 11px !important;
+            font-weight: bold !important;
+        }
+        .mermaid text.taskTextOutside {
+            fill: #1e293b !important;
+            font-family: ui-sans-serif, system-ui, sans-serif !important;
+            font-size: 11px !important;
+        }
+    </style>
 </head>
 <body class="bg-slate-100 font-sans text-slate-800">
     <nav class="bg-slate-900 text-white p-4 shadow-xl">
@@ -143,7 +203,7 @@ INDEX_HTML = """
             <h1 class="text-xl font-bold flex items-center gap-2">
                 <i class="fa-solid fa-chart-line text-emerald-400"></i> Gestor Gerencial de Proyectos
             </h1>
-            <div class="text-xs text-slate-400">v2.2 | Control de Presupuesto Real & Menús Dedicados</div>
+            <div class="text-xs text-slate-400">v2.3 | Control de Presupuesto Real, Actividades & GANTT</div>
         </div>
     </nav>
 
@@ -271,15 +331,15 @@ INDEX_HTML = """
                                 <button onclick="document.getElementById('modal-act').style.display='flex'" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg transition">+ Crear Actividad</button>
                             </div>
                             
-                            {% if not proyecto.actividades %}
+                            {% if not m.actividades_calculadas %}
                                 <div class="bg-white p-12 text-center rounded-2xl border border-dashed text-slate-400">
                                     No hay actividades registradas en este proyecto. Puedes agregarlas desde el Tablero Kanban o usando el botón superior.
                                 </div>
                             {% else %}
-                                {% for act in proyecto.actividades %}
+                                {% for act in m.actividades_calculadas %}
                                 <div class="bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow transition">
                                     <div class="p-4 bg-slate-50 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                        <div>
+                                        <div class="flex-grow">
                                             <div class="flex items-center gap-2">
                                                 <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full {% if act.estado == 'Completada' %}bg-emerald-100 text-emerald-700{% elif act.estado == 'Iniciada' %}bg-blue-100 text-blue-700{% else %}bg-slate-200 text-slate-600{% endif %}">
                                                     {{act.estado}}
@@ -297,6 +357,31 @@ INDEX_HTML = """
                                             {% if act.descripcion %}
                                                 <p class="text-xs text-slate-500 mt-1">{{ act.descripcion }}</p>
                                             {% endif %}
+                                            
+                                            <!-- Widget de Cumplimiento Financiero -->
+                                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 pt-2 border-t border-slate-200 text-xs">
+                                                <div>
+                                                    <span class="text-slate-500 font-semibold block">Presupuesto Estimado:</span>
+                                                    <strong class="text-slate-800">${{"{:,.2f}".format(act.presupuesto_tentativo)}}</strong>
+                                                </div>
+                                                <div>
+                                                    <span class="text-slate-500 font-semibold block">Subtotal Asignado (Gasto):</span>
+                                                    <strong class="text-slate-950">${{"{:,.2f}".format(act.subtotal_costo)}}</strong>
+                                                </div>
+                                                <div>
+                                                    <span class="text-slate-500 font-semibold block">Estado Cumplimiento:</span>
+                                                    {% if act.balance >= 0 %}
+                                                        <span class="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">Disponible: ${{"{:,.2f}".format(act.balance)}}</span>
+                                                    {% else %}
+                                                        <span class="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block">Excedido: ${{"{:,.2f}".format(act.balance|abs)}}</span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Barra de Progreso del Presupuesto por Actividad -->
+                                            <div class="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
+                                                <div class="h-1.5 rounded-full {% if act.cumplimiento_pct_real > 100 %}bg-rose-500{% elif act.cumplimiento_pct_real > 85 %}bg-amber-500{% else %}bg-emerald-500{% endif %}" style="width: {{act.cumplimiento_pct}}%"></div>
+                                            </div>
                                         </div>
                                         <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
                                             <button onclick="openRecurso('{{act.id}}', '{{act.nombre}}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-2 rounded-lg transition flex items-center gap-1 text-xs font-bold" title="Asignar Suministro o Mano de Obra">
@@ -406,6 +491,9 @@ INDEX_HTML = """
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200/80 space-y-2 relative">
                                                 <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
+                                                <div class="text-[10px] text-indigo-600 font-bold">
+                                                    Ppto Est: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
+                                                </div>
                                                 <div class="flex justify-between items-center pt-2">
                                                     <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">Sin Fechas</span>
                                                     <button onclick="openTransition('{{ act.id }}', '{{ act.nombre }}', '{{ act.estado }}', '{{ act.fecha_inicio }}', '{{ act.fecha_fin }}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold">
@@ -430,6 +518,9 @@ INDEX_HTML = """
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-200 space-y-2 relative">
                                                 <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
+                                                <div class="text-[10px] text-indigo-600 font-bold">
+                                                    Ppto Est: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
+                                                </div>
                                                 <div class="text-[10px] text-slate-500">
                                                     Inicio: <strong class="text-slate-800">{{ act.fecha_inicio }}</strong>
                                                 </div>
@@ -457,6 +548,9 @@ INDEX_HTML = """
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-emerald-200 space-y-2 relative">
                                                 <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
+                                                <div class="text-[10px] text-indigo-600 font-bold">
+                                                    Ppto Est: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
+                                                </div>
                                                 <div class="text-[10px] text-slate-500">
                                                     Desde: <strong class="text-slate-700">{{ act.fecha_inicio }}</strong> hasta <strong class="text-slate-700">{{ act.fecha_fin }}</strong>
                                                 </div>
@@ -481,7 +575,7 @@ INDEX_HTML = """
                             <h3 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
                                 <i class="fa-solid fa-stream text-indigo-500"></i> Cronograma de Planificación GANTT
                             </h3>
-                            <p class="text-xs text-slate-500 mb-6">Visualización temporal de las actividades en curso y finalizadas. Las actividades pendientes y sin fecha de inicio quedan excluidas del cronograma automáticamente.</p>
+                            <p class="text-xs text-slate-500 mb-6">Visualización temporal de las actividades en curso y finalizadas. Las actividades pendientes se excluyen automáticamente para evitar incoherencias en el gráfico.</p>
                             
                             {% if m.has_gantt_tasks %}
                                 <div class="mermaid overflow-x-auto bg-slate-50 p-6 rounded-2xl border">
@@ -593,6 +687,10 @@ INDEX_HTML = """
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre de la actividad</label>
                     <input type="text" name="nombre" placeholder="Ej. Pavimentación de carril" class="w-full p-2.5 border rounded-xl" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Presupuesto Estimado / Tentativo ($)</label>
+                    <input type="number" step="0.01" name="presupuesto_tentativo" placeholder="Ej. 10000.00" class="w-full p-2.5 border rounded-xl" required>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Descripción</label>
@@ -766,10 +864,22 @@ INDEX_HTML = """
             url.searchParams.set('tab', tabName);
             window.history.replaceState({}, '', url);
 
-            // Hack de resize necesario para recalcular los límites de Mermaid JS en divs ocultos
+            // Trigger Mermaid GANTT compilation when switching to the GANTT tab
             if (tabName === 'gantt') {
-                setTimeout(() => {
-                    window.dispatchEvent(new Event('resize'));
+                setTimeout(async () => {
+                    const mermaidDivs = document.querySelectorAll('.mermaid');
+                    mermaidDivs.forEach(div => {
+                        div.removeAttribute('data-processed');
+                    });
+                    if (window.mermaid) {
+                        try {
+                            await window.mermaid.run({
+                                nodes: mermaidDivs
+                            });
+                        } catch (err) {
+                            console.error("Mermaid run error:", err);
+                        }
+                    }
                 }, 50);
             }
         }
@@ -1025,12 +1135,14 @@ def crear_act(p_id):
     if p_id in PROYECTOS_DB:
         nombre_act = request.form["nombre"]
         descripcion_act = request.form.get("descripcion", "")
+        presupuesto_tentativo = float(request.form.get("presupuesto_tentativo", 0.0))
         
         # Una actividad se crea "Pendiente" sin fechas predefinidas
         PROYECTOS_DB[p_id]["actividades"].append({
             "id": str(uuid.uuid4())[:6], 
             "nombre": nombre_act, 
             "descripcion": descripcion_act,
+            "presupuesto_tentativo": presupuesto_tentativo,
             "estado": "Pendiente",
             "fecha_inicio": None, 
             "fecha_fin": None, 
