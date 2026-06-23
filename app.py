@@ -7,7 +7,7 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = "clave_gerencial_proyectos_2024"
 
-# Base de datos en memoria optimizada con el nuevo flujo de Inventario de Recursos
+# Base de datos en memoria optimizada con el nuevo flujo de Inventario de Recursos Financieros
 PROYECTOS_DB = {
     "demo": {
         "id": "demo",
@@ -18,10 +18,9 @@ PROYECTOS_DB = {
         "fecha_fin_tentativa": "2024-08-30",
         # Pool General de Recursos del Proyecto
         "recursos_pool": [
-            {"id": "rp-1", "nombre": "Equipo de Topógrafos", "tipo": "mano_de_obra", "precio": 1500.0, "cantidad_total": 5, "cantidad_disponible": 3},
+            {"id": "rp-1", "nombre": "Fondo Mano de Obra: Pavimentación", "tipo": "mano_de_obra", "monto_total": 50000.0, "monto_disponible": 47000.0},
             {"id": "rp-2", "nombre": "Alquiler Estación Total", "tipo": "material", "precio": 450.0, "cantidad_total": 20, "cantidad_disponible": 10},
-            {"id": "rp-3", "nombre": "Operadores de Maquinaria", "tipo": "mano_de_obra", "precio": 120.0, "cantidad_total": 100, "cantidad_disponible": 50},
-            {"id": "rp-4", "nombre": "Combustible Diesel (Gals)", "tipo": "material", "precio": 5.5, "cantidad_total": 2000, "cantidad_disponible": 800}
+            {"id": "rp-3", "nombre": "Combustible Diesel (Gals)", "tipo": "material", "precio": 5.5, "cantidad_total": 2000, "cantidad_disponible": 800}
         ],
         "actividades": [
             {
@@ -32,7 +31,7 @@ PROYECTOS_DB = {
                 "fecha_inicio": "2024-01-20",
                 "fecha_fin": "2024-02-15",
                 "recursos": [
-                    {"id": "r1", "pool_id": "rp-1", "nombre": "Equipo de Topógrafos", "tipo": "mano_de_obra", "precio": 1500.0, "cantidad": 2},
+                    {"id": "r1", "pool_id": "rp-1", "nombre": "Fondo Mano de Obra: Pavimentación", "tipo": "mano_de_obra", "monto": 3000.0, "fecha_pago": "2024-02-10"},
                     {"id": "r2", "pool_id": "rp-2", "nombre": "Alquiler Estación Total", "tipo": "material", "precio": 450.0, "cantidad": 10}
                 ]
             },
@@ -44,8 +43,7 @@ PROYECTOS_DB = {
                 "fecha_inicio": "2024-03-01",
                 "fecha_fin": None,
                 "recursos": [
-                    {"id": "r3", "pool_id": "rp-3", "nombre": "Operadores de Maquinaria", "tipo": "mano_de_obra", "precio": 120.0, "cantidad": 50},
-                    {"id": "r4", "pool_id": "rp-4", "nombre": "Combustible Diesel (Gals)", "tipo": "material", "precio": 5.5, "cantidad": 1200}
+                    {"id": "r4", "pool_id": "rp-3", "nombre": "Combustible Diesel (Gals)", "tipo": "material", "precio": 5.5, "cantidad": 1200}
                 ]
             },
             {
@@ -83,8 +81,14 @@ def calcular_metricas(proyecto):
     gantt_code = "gantt\ndateFormat YYYY-MM-DD\ntitle Cronograma de Actividades\nsection Actividades Activas\n"
     
     for act in proyecto["actividades"]:
-        # El costo de la actividad se calcula de sus recursos asignados
-        costo_act = sum(float(r["precio"]) * float(r["cantidad"]) for r in act["recursos"])
+        # El costo se calcula dependiente de si es mano de obra (monto directo) o material (precio * cantidad)
+        costo_act = 0.0
+        for r in act["recursos"]:
+            if r["tipo"] == "mano_de_obra":
+                costo_act += float(r.get("monto", 0.0))
+            else:
+                costo_act += float(r.get("precio", 0.0)) * float(r.get("cantidad", 0))
+                
         gasto_total += costo_act
         
         # Conteo para Kanban y métricas
@@ -139,7 +143,7 @@ INDEX_HTML = """
             <h1 class="text-xl font-bold flex items-center gap-2">
                 <i class="fa-solid fa-chart-line text-emerald-400"></i> Gestor Gerencial de Proyectos
             </h1>
-            <div class="text-xs text-slate-400">v2.2 | Kanban, Inventario Centralizado & GANTT</div>
+            <div class="text-xs text-slate-400">v2.2 | Control de Presupuesto Real & Menús Dedicados</div>
         </div>
     </nav>
 
@@ -183,7 +187,7 @@ INDEX_HTML = """
                 <div class="space-y-2">
                     <h3 class="text-xs font-bold uppercase text-slate-400 tracking-wider px-2">Listado de Proyectos</h3>
                     {% for p_id, p in proyectos.items() %}
-                    <a href="/?id={{p_id}}" class="block p-4 bg-white border rounded-xl hover:border-indigo-500 transition shadow-sm {% if proyecto and proyecto.id == p_id %}border-indigo-500 bg-indigo-50/30{% endif %}">
+                    <a href="/?id={{p_id}}&tab={{ active_tab }}" class="block p-4 bg-white border rounded-xl hover:border-indigo-500 transition shadow-sm {% if proyecto and proyecto.id == p_id %}border-indigo-500 bg-indigo-50/30{% endif %}">
                         <div class="font-bold text-slate-700 text-sm">{{p.nombre}}</div>
                         <div class="text-[10px] text-slate-500 mt-1">Límite: {{p.fecha_fin_tentativa}}</div>
                     </a>
@@ -200,7 +204,7 @@ INDEX_HTML = """
                     </div>
                 {% else %}
                     <!-- Resumen Gerencial Card -->
-                    <div class="bg-slate-900 text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden">
+                    <div class="bg-slate-900 text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden mb-4">
                         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                             <div>
                                 <h2 class="text-3xl font-bold">{{proyecto.nombre}}</h2>
@@ -241,84 +245,145 @@ INDEX_HTML = """
                         </div>
                     </div>
 
-                    <!-- Panel de Inventario de Recursos (General Pool) -->
-                    <div class="bg-white p-6 rounded-3xl border shadow-sm">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="font-bold text-slate-800 flex items-center gap-2">
-                                <i class="fa-solid fa-boxes-stacked text-amber-500"></i> Inventario General del Proyecto
-                            </h3>
-                            <button onclick="document.getElementById('modal-pool').style.display='flex'" class="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition shadow-md">
-                                <i class="fa-solid fa-plus-circle"></i> Agregar Recurso General
-                            </button>
-                        </div>
-                        <p class="text-xs text-slate-500 mb-3">Todos los materiales y servicios de mano de obra se registran aquí primero. Luego los descuentas al asignarlos a las actividades.</p>
-                        
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-xs text-left">
-                                <thead>
-                                    <tr class="text-slate-400 border-b font-semibold uppercase">
-                                        <th class="pb-2">Recurso</th>
-                                        <th class="pb-2">Clasificación</th>
-                                        <th class="pb-2 text-right">Precio Unitario</th>
-                                        <th class="pb-2 text-center">Stock Total</th>
-                                        <th class="pb-2 text-center">Disponible</th>
-                                        <th class="pb-2 text-center">Eliminar</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100">
-                                    {% if not proyecto.recursos_pool %}
-                                        <tr>
-                                            <td colspan="6" class="py-4 text-center text-slate-400 italic">No hay recursos agregados al pool general.</td>
-                                        </tr>
-                                    {% else %}
-                                        {% for r in proyecto.recursos_pool %}
-                                        <tr class="text-slate-700">
-                                            <td class="py-2.5 font-semibold text-slate-900">{{r.nombre}}</td>
-                                            <td class="py-2.5">
-                                                {% if r.tipo == 'mano_de_obra' %}
-                                                    <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">Mano de Obra</span>
-                                                {% else %}
-                                                    <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">Material</span>
-                                                {% endif %}
-                                            </td>
-                                            <td class="py-2.5 text-right font-medium">${{"{:,.2f}".format(r.precio)}}</td>
-                                            <td class="py-2.5 text-center font-bold text-slate-700">{{r.cantidad_total}}</td>
-                                            <td class="py-2.5 text-center">
-                                                <span class="px-2 py-0.5 rounded-full text-xs font-bold {% if r.cantidad_disponible > 0 %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
-                                                    {{r.cantidad_disponible}}
+                    <!-- Menú de Pestañas (Tabs) -->
+                    <div class="flex flex-wrap gap-2 border-b border-slate-200 pb-4 mb-6">
+                        <button id="tab-btn-resumen" onclick="switchTab('resumen')" class="flex items-center gap-2 px-5 py-3 text-sm font-semibold transition rounded-xl">
+                            <i class="fa-solid fa-chart-pie"></i> Resumen de Costos
+                        </button>
+                        <button id="tab-btn-kanban" onclick="switchTab('kanban')" class="flex items-center gap-2 px-5 py-3 text-sm font-semibold transition rounded-xl">
+                            <i class="fa-solid fa-table-columns"></i> Tablero Kanban
+                        </button>
+                        <button id="tab-btn-gantt" onclick="switchTab('gantt')" class="flex items-center gap-2 px-5 py-3 text-sm font-semibold transition rounded-xl">
+                            <i class="fa-solid fa-stream"></i> Cronograma GANTT
+                        </button>
+                        <button id="tab-btn-inventario" onclick="switchTab('inventario')" class="flex items-center gap-2 px-5 py-3 text-sm font-semibold transition rounded-xl">
+                            <i class="fa-solid fa-boxes-stacked"></i> Inventario General
+                        </button>
+                    </div>
+
+                    <!-- PESTAÑA 1: RESUMEN FINANCIERO Y DESGLOSE -->
+                    <div id="panel-resumen" class="space-y-6">
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                    <i class="fa-solid fa-gears text-indigo-600"></i> Desglose Físico y Costos de Actividades
+                                </h3>
+                                <button onclick="document.getElementById('modal-act').style.display='flex'" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg transition">+ Crear Actividad</button>
+                            </div>
+                            
+                            {% if not proyecto.actividades %}
+                                <div class="bg-white p-12 text-center rounded-2xl border border-dashed text-slate-400">
+                                    No hay actividades registradas en este proyecto. Puedes agregarlas desde el Tablero Kanban o usando el botón superior.
+                                </div>
+                            {% else %}
+                                {% for act in proyecto.actividades %}
+                                <div class="bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow transition">
+                                    <div class="p-4 bg-slate-50 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                        <div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full {% if act.estado == 'Completada' %}bg-emerald-100 text-emerald-700{% elif act.estado == 'Iniciada' %}bg-blue-100 text-blue-700{% else %}bg-slate-200 text-slate-600{% endif %}">
+                                                    {{act.estado}}
                                                 </span>
-                                            </td>
-                                            <td class="py-2.5 text-center">
-                                                <a href="/proyectos/{{proyecto.id}}/recursos-pool/{{r.id}}/eliminar" 
-                                                   onclick="return confirm('¿Seguro que deseas eliminar este recurso del inventario general?')"
-                                                   class="text-rose-500 hover:text-rose-700">
-                                                    <i class="fa-solid fa-trash"></i>
-                                                </a>
-                                            </td>
-                                        </tr>
-                                        {% endfor %}
-                                    {% endif %}
-                                </tbody>
-                            </table>
+                                                <span class="text-[11px] font-medium text-slate-500">
+                                                    {% if act.fecha_inicio %}
+                                                        Inicio: <strong class="text-slate-700">{{ act.fecha_inicio }}</strong> 
+                                                        {% if act.fecha_fin %}| Fin: <strong class="text-slate-700">{{ act.fecha_fin }}</strong>{% endif %}
+                                                    {% else %}
+                                                        Sin planificación de fechas asignadas.
+                                                    {% endif %}
+                                                </span>
+                                            </div>
+                                            <h4 class="font-bold text-slate-800 text-base mt-1.5">{{act.nombre}}</h4>
+                                            {% if act.descripcion %}
+                                                <p class="text-xs text-slate-500 mt-1">{{ act.descripcion }}</p>
+                                            {% endif %}
+                                        </div>
+                                        <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                                            <button onclick="openRecurso('{{act.id}}', '{{act.nombre}}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-2 rounded-lg transition flex items-center gap-1 text-xs font-bold" title="Asignar Suministro o Mano de Obra">
+                                                <i class="fa-solid fa-plus-circle text-base"></i> Asignar Recurso
+                                            </button>
+                                            <a href="/actividades/{{proyecto.id}}/{{act.id}}/eliminar?tab=resumen" 
+                                               onclick="return confirm('¿Seguro que deseas eliminar esta actividad por completo? Los recursos consumidos retornarán automáticamente al pool.')" 
+                                               class="bg-rose-50 hover:bg-rose-100 text-rose-600 p-2 rounded-lg transition" title="Eliminar Actividad">
+                                                <i class="fa-solid fa-trash-can text-base"></i>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="p-4">
+                                        <table class="w-full text-xs text-left">
+                                            <thead>
+                                                <tr class="text-slate-400 border-b font-semibold uppercase">
+                                                    <th class="pb-2">Recurso / Insumo / Pago</th>
+                                                    <th class="pb-2">Clasificación</th>
+                                                    <th class="pb-2 text-right">Cantidad / Desembolso</th>
+                                                    <th class="pb-2 text-right">Precio unitario</th>
+                                                    <th class="pb-2 text-right">Costo Total</th>
+                                                    <th class="pb-2 text-center">Desvincular (Devolver)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-slate-100">
+                                                {% if not act.recursos %}
+                                                    <tr>
+                                                        <td colspan="6" class="py-4 text-center text-slate-400 italic">No hay recursos ni mano de obra asignada a esta actividad. Usa el botón "Asignar Recurso" para consumir del inventario o imputar pagos.</td>
+                                                    </tr>
+                                                {% else %}
+                                                    {% for r in act.recursos %}
+                                                    <tr class="text-slate-700">
+                                                        <td class="py-2.5 font-medium text-slate-900">
+                                                            {{r.nombre}}
+                                                            {% if r.tipo == 'mano_de_obra' and r.fecha_pago %}
+                                                                <span class="block text-[10px] text-slate-400 font-normal">Pagado el: {{ r.fecha_pago }}</span>
+                                                            {% endif %}
+                                                        </td>
+                                                        <td class="py-2.5">
+                                                            {% if r.tipo == 'mano_de_obra' %}
+                                                                <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">Pago de Mano de Obra</span>
+                                                            {% else %}
+                                                                <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">Material</span>
+                                                            {% endif %}
+                                                        </td>
+                                                        <td class="py-2.5 text-right font-semibold text-slate-900">
+                                                            {% if r.tipo == 'mano_de_obra' %}
+                                                                Monto: ${{"{:,.2f}".format(r.monto)}}
+                                                            {% else %}
+                                                                {{r.cantidad}} Unidades
+                                                            {% endif %}
+                                                        </td>
+                                                        <td class="py-2.5 text-right font-medium">
+                                                            {% if r.tipo == 'mano_de_obra' %}
+                                                                -
+                                                            {% else %}
+                                                                ${{"{:,.2f}".format(r.precio)}}
+                                                            {% endif %}
+                                                        </td>
+                                                        <td class="py-2.5 text-right font-bold text-slate-900">
+                                                            {% if r.tipo == 'mano_de_obra' %}
+                                                                ${{"{:,.2f}".format(r.monto)}}
+                                                            {% else %}
+                                                                ${{"{:,.2f}".format(r.precio * r.cantidad)}}
+                                                            {% endif %}
+                                                        </td>
+                                                        <td class="py-2.5 text-center">
+                                                            <a href="/recursos/{{proyecto.id}}/{{act.id}}/{{r.id}}/eliminar?tab=resumen" 
+                                                               onclick="return confirm('¿Deseas remover este recurso de la actividad? Las cantidades o fondos regresarán de inmediato al stock disponible.')" 
+                                                               class="text-rose-500 hover:text-rose-700 transition" title="Remover e Incrementar Stock Pool">
+                                                                <i class="fa-solid fa-trash-arrow-up text-base"></i> Devolver
+                                                            </a>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                {% endif %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% endif %}
                         </div>
                     </div>
 
-                    <!-- Diagrama de GANTT -->
-                    <div class="bg-white p-6 rounded-3xl border shadow-sm">
-                        <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fa-solid fa-stream text-indigo-500"></i> Cronograma GANTT</h3>
-                        {% if m.has_gantt_tasks %}
-                            <div class="mermaid overflow-x-auto bg-slate-50 p-4 rounded-xl">
-                                {{ m.gantt_code|safe }}
-                            </div>
-                        {% else %}
-                            <div class="text-center py-8 text-slate-400 text-sm italic bg-slate-50 rounded-xl border border-dashed">
-                                Las actividades pendientes no se grafican. Inicia o finaliza al menos una actividad con fecha para visualizar su cronograma.
-                            </div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Tablero KANBAN -->
-                    <div class="space-y-4">
+                    <!-- PESTAÑA 2: TABLERO KANBAN -->
+                    <div id="panel-kanban" class="space-y-6 hidden">
                         <div class="flex justify-between items-center">
                             <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
                                 <i class="fa-solid fa-table-columns text-indigo-600"></i> Tablero Kanban de Actividades
@@ -343,9 +408,8 @@ INDEX_HTML = """
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
                                                 <div class="flex justify-between items-center pt-2">
                                                     <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">Sin Fechas</span>
-                                                    <!-- Trigger para transicionar estado -->
                                                     <button onclick="openTransition('{{ act.id }}', '{{ act.nombre }}', '{{ act.estado }}', '{{ act.fecha_inicio }}', '{{ act.fecha_fin }}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold">
-                                                        Cambiar Estado <i class="fa-solid fa-angle-right"></i>
+                                                        Mover Estado <i class="fa-solid fa-angle-right"></i>
                                                     </button>
                                                 </div>
                                             </div>
@@ -372,7 +436,7 @@ INDEX_HTML = """
                                                 <div class="flex justify-between items-center pt-2">
                                                     <span class="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold">{{ act.recursos|length }} Recursos</span>
                                                     <button onclick="openTransition('{{ act.id }}', '{{ act.nombre }}', '{{ act.estado }}', '{{ act.fecha_inicio }}', '{{ act.fecha_fin }}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold">
-                                                        Cambiar Estado <i class="fa-solid fa-angle-right"></i>
+                                                        Mover Estado <i class="fa-solid fa-angle-right"></i>
                                                     </button>
                                                 </div>
                                             </div>
@@ -399,7 +463,7 @@ INDEX_HTML = """
                                                 <div class="flex justify-between items-center pt-2">
                                                     <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">{{ act.recursos|length }} Recursos</span>
                                                     <button onclick="openTransition('{{ act.id }}', '{{ act.nombre }}', '{{ act.estado }}', '{{ act.fecha_inicio }}', '{{ act.fecha_fin }}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold">
-                                                        Cambiar Estado <i class="fa-solid fa-angle-right"></i>
+                                                        Mover Estado <i class="fa-solid fa-angle-right"></i>
                                                     </button>
                                                 </div>
                                             </div>
@@ -411,94 +475,107 @@ INDEX_HTML = """
                         </div>
                     </div>
 
-                    <!-- Detalle de Actividades (Gestión de Recursos por Actividad) -->
-                    <div class="space-y-4 pt-4">
-                        <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
-                            <i class="fa-solid fa-gears text-indigo-600"></i> Desglose Físico y Costos de Actividades
-                        </h3>
-                        {% if not proyecto.actividades %}
-                            <div class="bg-white p-12 text-center rounded-2xl border border-dashed text-slate-400">
-                                Aún no hay actividades en este proyecto.
-                            </div>
-                        {% else %}
-                            {% for act in proyecto.actividades %}
-                            <div class="bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow transition">
-                                <div class="p-4 bg-slate-50 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                    <div>
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full {% if act.estado == 'Completada' %}bg-emerald-100 text-emerald-700{% elif act.estado == 'Iniciada' %}bg-blue-100 text-blue-700{% else %}bg-slate-200 text-slate-600{% endif %}">
-                                                {{act.estado}}
-                                            </span>
-                                            <span class="text-[11px] font-medium text-slate-500">
-                                                {% if act.fecha_inicio %}
-                                                    Inicio: <strong class="text-slate-700">{{ act.fecha_inicio }}</strong> 
-                                                    {% if act.fecha_fin %}| Fin: <strong class="text-slate-700">{{ act.fecha_fin }}</strong>{% endif %}
-                                                {% else %}
-                                                    Sin planificación de fechas asignadas.
-                                                {% endif %}
-                                            </span>
-                                        </div>
-                                        <h4 class="font-bold text-slate-800 text-base mt-1.5">{{act.nombre}}</h4>
-                                    </div>
-                                    <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-                                        <!-- Botón para asignar recurso disponible del Pool -->
-                                        <button onclick="openRecurso('{{act.id}}', '{{act.nombre}}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-2 rounded-lg transition flex items-center gap-1 text-xs font-bold" title="Asignar Recurso de Inventario">
-                                            <i class="fa-solid fa-plus-circle text-base"></i> Asignar Recurso
-                                        </button>
-                                        <a href="/actividades/{{proyecto.id}}/{{act.id}}/eliminar" 
-                                           onclick="return confirm('¿Seguro que deseas eliminar esta actividad por completo?')" 
-                                           class="bg-rose-50 hover:bg-rose-100 text-rose-600 p-2 rounded-lg transition" title="Eliminar Actividad">
-                                            <i class="fa-solid fa-trash-can text-base"></i>
-                                        </a>
-                                    </div>
+                    <!-- PESTAÑA 3: CRONOGRAMA GANTT -->
+                    <div id="panel-gantt" class="space-y-6 hidden">
+                        <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                            <h3 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                <i class="fa-solid fa-stream text-indigo-500"></i> Cronograma de Planificación GANTT
+                            </h3>
+                            <p class="text-xs text-slate-500 mb-6">Visualización temporal de las actividades en curso y finalizadas. Las actividades pendientes y sin fecha de inicio quedan excluidas del cronograma automáticamente.</p>
+                            
+                            {% if m.has_gantt_tasks %}
+                                <div class="mermaid overflow-x-auto bg-slate-50 p-6 rounded-2xl border">
+                                    {{ m.gantt_code|safe }}
                                 </div>
-                                <div class="p-4">
-                                    <table class="w-full text-xs text-left">
-                                        <thead>
-                                            <tr class="text-slate-400 border-b font-semibold uppercase">
-                                                <th class="pb-2">Recurso / Insumo</th>
-                                                <th class="pb-2">Clasificación</th>
-                                                <th class="pb-2 text-right">Cantidad Asignada</th>
-                                                <th class="pb-2 text-right">Precio unitario</th>
-                                                <th class="pb-2 text-right">Costo Total</th>
-                                                <th class="pb-2 text-center">Desvincular (Devolver al Pool)</th>
+                            {% else %}
+                                <div class="text-center py-16 text-slate-400 text-sm italic bg-slate-50 rounded-2xl border border-dashed">
+                                    <i class="fa-regular fa-clock text-4xl mb-3 block text-slate-300"></i>
+                                    No hay actividades activas con fechas reales asignadas en este momento. Vaya al tablero Kanban para activar sus actividades.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- PESTAÑA 4: INVENTARIO DE RECURSOS -->
+                    <div id="panel-inventario" class="space-y-6 hidden">
+                        <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold text-slate-800 flex items-center gap-2">
+                                    <i class="fa-solid fa-boxes-stacked text-amber-500"></i> Inventario y Fondos de Mano de Obra
+                                </h3>
+                                <button onclick="document.getElementById('modal-pool').style.display='flex'" class="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl transition shadow-md">
+                                    <i class="fa-solid fa-plus-circle"></i> Adquirir Recurso o Fondos
+                                </button>
+                            </div>
+                            <p class="text-xs text-slate-500 mb-4">Maneje los materiales por cantidad de stock y registre los fondos financieros destinados para los pagos de mano de obra para descontar de forma exacta.</p>
+                            
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs text-left">
+                                    <thead>
+                                        <tr class="text-slate-400 border-b font-semibold uppercase">
+                                            <th class="pb-2">Recurso</th>
+                                            <th class="pb-2">Clasificación</th>
+                                            <th class="pb-2 text-right">Precio Unitario / Total</th>
+                                            <th class="pb-2 text-center">Stock Total / Asignado</th>
+                                            <th class="pb-2 text-center">Disponible</th>
+                                            <th class="pb-2 text-center">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        {% if not proyecto.recursos_pool %}
+                                            <tr>
+                                                <td colspan="6" class="py-4 text-center text-slate-400 italic">No hay insumos ni fondos de mano de obra en el pool de este proyecto.</td>
                                             </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-slate-100">
-                                            {% if not act.recursos %}
-                                                <tr>
-                                                    <td colspan="6" class="py-4 text-center text-slate-400 italic">No hay recursos ni mano de obra asignada a esta actividad. Usa el botón "Asignar Recurso" para consumir del inventario.</td>
-                                                </tr>
-                                            {% else %}
-                                                {% for r in act.recursos %}
-                                                <tr class="text-slate-700">
-                                                    <td class="py-2.5 font-medium text-slate-900">{{r.nombre}}</td>
-                                                    <td class="py-2.5">
-                                                        {% if r.tipo == 'mano_de_obra' %}
-                                                            <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">Mano de Obra</span>
-                                                        {% else %}
-                                                            <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">Material</span>
-                                                        {% endif %}
-                                                    </td>
-                                                    <td class="py-2.5 text-right font-semibold text-slate-900">{{r.cantidad}}</td>
-                                                    <td class="py-2.5 text-right font-medium">${{"{:,.2f}".format(r.precio)}}</td>
-                                                    <td class="py-2.5 text-right font-bold text-slate-900">${{"{:,.2f}".format(r.precio * r.cantidad)}}</td>
-                                                    <td class="py-2.5 text-center">
-                                                        <a href="/recursos/{{proyecto.id}}/{{act.id}}/{{r.id}}/eliminar" 
-                                                           onclick="return confirm('¿Deseas remover este recurso de la actividad? Las unidades regresarán al stock disponible del pool general.')" 
-                                                           class="text-rose-500 hover:text-rose-700 transition" title="Remover e Incrementar Stock Pool">
-                                                            <i class="fa-solid fa-trash-arrow-up text-base"></i> Devolver
-                                                        </a>
-                                                    </td>
-                                                </tr>
-                                                {% endfor %}
-                                            {% endif %}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                        {% else %}
+                                            {% for r in proyecto.recursos_pool %}
+                                            <tr class="text-slate-700">
+                                                <td class="py-2.5 font-bold text-slate-900">{{r.nombre}}</td>
+                                                <td class="py-2.5">
+                                                    {% if r.tipo == 'mano_de_obra' %}
+                                                        <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200 text-[10px] font-bold">Mano de Obra</span>
+                                                    {% else %}
+                                                        <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200 text-[10px] font-bold">Material / Insumo</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td class="py-2.5 text-right font-semibold">
+                                                    {% if r.tipo == 'mano_de_obra' %}
+                                                        Presupuestado: ${{"{:,.2f}".format(r.monto_total)}}
+                                                    {% else %}
+                                                        ${{"{:,.2f}".format(r.precio)}} c/u
+                                                    {% endif %}
+                                                </td>
+                                                <td class="py-2.5 text-center">
+                                                    {% if r.tipo == 'mano_de_obra' %}
+                                                        Fondo Total
+                                                    {% else %}
+                                                        Stock: {{ r.cantidad_total }}
+                                                    {% endif %}
+                                                </td>
+                                                <td class="py-2.5 text-center">
+                                                    {% if r.tipo == 'mano_de_obra' %}
+                                                        <span class="px-2.5 py-1 rounded-full text-xs font-bold {% if r.monto_disponible > 0 %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
+                                                            Disp: ${{"{:,.2f}".format(r.monto_disponible)}}
+                                                        </span>
+                                                    {% else %}
+                                                        <span class="px-2.5 py-1 rounded-full text-xs font-bold {% if r.cantidad_disponible > 0 %}bg-blue-100 text-blue-800{% else %}bg-rose-100 text-rose-800{% endif %}">
+                                                            Disp: {{ r.cantidad_disponible }}
+                                                        </span>
+                                                    {% endif %}
+                                                </td>
+                                                <td class="py-2.5 text-center">
+                                                    <a href="/proyectos/{{proyecto.id}}/recursos-pool/{{r.id}}/eliminar" 
+                                                       onclick="return confirm('¿Seguro que deseas eliminar este recurso del inventario general?')"
+                                                       class="text-rose-500 hover:text-rose-700">
+                                                        <i class="fa-solid fa-trash-can text-base"></i>
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        {% endif %}
+                                    </tbody>
+                                </table>
                             </div>
-                            {% endfor %}
-                        {% endif %}
+                        </div>
                     </div>
                 {% endif %}
             </section>
@@ -506,19 +583,19 @@ INDEX_HTML = """
     </main>
 
     <!-- Modal: Nueva Actividad -->
-    <div id="modal-act" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
-        <div class="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl animate-in fade-in duration-200">
+    <div id="modal-act" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm animate-fade-in">
+        <div class="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl animate-in scale-in duration-200">
             <h3 class="text-xl font-bold mb-4 text-slate-900 flex items-center gap-2">
-                <i class="fa-solid fa-diagram-project text-indigo-600"></i> Agregar Nueva Actividad
+                <i class="fa-solid fa-diagram-project text-indigo-600"></i> Registrar Actividad
             </h3>
-            <p class="text-xs text-slate-500 mb-4">La actividad se agregará en estado "Pendiente" por defecto, ideal para legalizar posteriormente.</p>
+            <p class="text-xs text-slate-500 mb-4">La actividad se creará en estado "Pendiente" y sin fechas para que la inicie y legalice cuando lo requiera.</p>
             <form action="/actividades/{{proyecto.id if proyecto else ''}}" method="POST" class="space-y-4 text-sm">
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre de la actividad</label>
-                    <input type="text" name="nombre" placeholder="Ej. Instalaciones Sanitarias" class="w-full p-2.5 border rounded-xl" required>
+                    <input type="text" name="nombre" placeholder="Ej. Pavimentación de carril" class="w-full p-2.5 border rounded-xl" required>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 font-semibold">Descripción</label>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Descripción</label>
                     <textarea name="descripcion" placeholder="Alcance general de la tarea..." rows="2" class="w-full p-2.5 border rounded-xl"></textarea>
                 </div>
                 <div class="flex gap-2 pt-2">
@@ -539,7 +616,7 @@ INDEX_HTML = """
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nuevo Estado</label>
                     <select name="nuevo_estado" id="select-nuevo-estado" class="w-full p-2.5 border rounded-xl" required>
-                        <option value="Pendiente">Pendiente (Sin Fechas / Sin Graficar)</option>
+                        <option value="Pendiente">Pendiente (Sin Fechas / No graficar en GANTT)</option>
                         <option value="Iniciada">Iniciada (En curso - Requiere fecha de inicio)</option>
                         <option value="Completada">Completada (Finalizada - Requiere fecha de inicio y fin)</option>
                     </select>
@@ -567,30 +644,40 @@ INDEX_HTML = """
     <div id="modal-pool" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
         <div class="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl">
             <h3 class="text-xl font-bold mb-4 text-slate-900 flex items-center gap-2">
-                <i class="fa-solid fa-boxes-stacked text-amber-500"></i> Registrar Recurso en Inventario
+                <i class="fa-solid fa-boxes-stacked text-amber-500"></i> Registrar en Inventario / Fondos
             </h3>
             <form action="/proyectos/{{proyecto.id if proyecto else ''}}/recursos-pool" method="POST" class="space-y-4 text-sm">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre del Recurso / Material / Servicio</label>
-                    <input type="text" name="nombre" placeholder="Ej. Ingeniero Residente, Cemento Portland" class="w-full p-2.5 border rounded-xl" required>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre del Recurso / Insumo / Fondo</label>
+                    <input type="text" name="nombre" placeholder="Ej. Alambre Recocido, Nómina Obreros Pavimentación" class="w-full p-2.5 border rounded-xl" required>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Clasificación</label>
-                    <select name="tipo" class="w-full p-2.5 border rounded-xl" required>
+                    <select name="tipo" id="pool-tipo-selector" onchange="togglePoolFields(this.value)" class="w-full p-2.5 border rounded-xl" required>
                         <option value="material">Insumo / Material Físico</option>
-                        <option value="mano_de_obra">Mano de Obra (Servicios directos)</option>
+                        <option value="mano_de_obra">Pago de Mano de Obra (Dinero/Fondo Financiero)</option>
                     </select>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+
+                <!-- Campos dinámicos para materiales -->
+                <div id="pool-fields-material" class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Costo Unitario ($)</label>
-                        <input type="number" step="0.01" name="precio" placeholder="Precio unitario" class="w-full p-2.5 border rounded-xl" required>
+                        <input type="number" step="0.01" name="precio" id="pool-precio" placeholder="Precio unitario" class="w-full p-2.5 border rounded-xl" required>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cantidad Inicial Adquirida</label>
-                        <input type="number" name="cantidad" min="1" value="10" class="w-full p-2.5 border rounded-xl" required>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cantidad Inicial</label>
+                        <input type="number" name="cantidad" id="pool-cantidad" min="1" value="10" class="w-full p-2.5 border rounded-xl" required>
                     </div>
                 </div>
+
+                <!-- Campos dinámicos para Mano de Obra (Monetario) -->
+                <div id="pool-fields-labor" class="hidden">
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 font-semibold text-amber-600">Presupuesto/Fondo de Pago ($)</label>
+                    <input type="number" step="0.01" name="monto_total" id="pool-monto-total" placeholder="Ej. 15000" class="w-full p-2.5 border border-amber-300 rounded-xl bg-amber-50/50">
+                    <p class="text-[10px] text-slate-400 mt-1">Defina el dinero total que tendrá de cupo disponible para pagar mano de obra.</p>
+                </div>
+
                 <div class="flex gap-2 pt-2">
                     <button type="button" onclick="document.getElementById('modal-pool').style.display='none'" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition">Cancelar</button>
                     <button class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg transition">Adquirir a Inventario</button>
@@ -599,7 +686,7 @@ INDEX_HTML = """
         </div>
     </div>
 
-    <!-- Modal: Asignar Recurso del Pool a una Actividad -->
+    <!-- Modal: Asignar Recurso del Pool a una Actividad (Dynamic Inputs) -->
     <div id="modal-rec" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
         <div class="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl">
             <h3 class="text-xl font-bold mb-2 text-slate-900"><i class="fa-solid fa-plus-circle text-indigo-600"></i> Consumir del Inventario</h3>
@@ -607,9 +694,9 @@ INDEX_HTML = """
             
             <form id="form-rec" method="POST" class="space-y-4 text-sm">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Seleccionar Recurso del Pool</label>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Seleccionar Recurso disponible</label>
                     <select name="pool_id" id="select-pool-recurso" class="w-full p-2.5 border rounded-xl" required>
-                        <!-- Cargado dinámicamente mediante javascript -->
+                        <!-- Se llena mediante JS -->
                     </select>
                 </div>
                 
@@ -617,9 +704,21 @@ INDEX_HTML = """
                     Selecciona un recurso para ver su disponibilidad y costo.
                 </div>
 
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cantidad a Asignar</label>
-                    <input type="number" name="cantidad" id="input-cantidad-rec" min="1" value="1" class="w-full p-2.5 border rounded-xl" required>
+                <!-- Campos de asignación dinámicos por JS -->
+                <div id="rec-fields-material" class="hidden">
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cantidad de Unidades a Asignar</label>
+                    <input type="number" name="cantidad" id="input-cantidad-rec" min="1" value="1" class="w-full p-2.5 border rounded-xl">
+                </div>
+
+                <div id="rec-fields-labor" class="hidden space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Monto de Pago ($)</label>
+                        <input type="number" step="0.01" name="monto" id="input-monto-rec" placeholder="Ej. 1200.00" class="w-full p-2.5 border rounded-xl">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha de Ejecución de Pago</label>
+                        <input type="date" name="fecha_pago" id="input-fecha-pago-rec" class="w-full p-2.5 border rounded-xl">
+                    </div>
                 </div>
 
                 <div class="flex gap-2 pt-2">
@@ -630,52 +729,157 @@ INDEX_HTML = """
         </div>
     </div>
 
-    <!-- Inyectamos los recursos disponibles como un array JSON en el navegador para el JS del modal -->
+    <!-- Scripts de navegación y lógica interactiva de formularios -->
     <script>
         const recursosPool = {{ proyecto.recursos_pool|tojson|safe if proyecto else '[]' }};
-        
+        const activeTabClass = "flex items-center gap-2 px-5 py-3 text-sm font-bold bg-indigo-600 text-white rounded-xl shadow-md border-b-2 border-indigo-700 transition";
+        const inactiveTabClass = "flex items-center gap-2 px-5 py-3 text-sm font-semibold bg-white text-slate-600 hover:text-indigo-600 rounded-xl hover:bg-slate-50 border border-slate-200 shadow-sm transition";
+
+        window.onload = function() {
+            // Lee el tab activo de la URL, si no está definido va por defecto a resumen
+            const urlParams = new URLSearchParams(window.location.search);
+            const activeTab = urlParams.get('tab') || 'resumen';
+            switchTab(activeTab);
+        }
+
+        function switchTab(tabName) {
+            // Ocultar todos los paneles
+            document.getElementById('panel-resumen').classList.add('hidden');
+            document.getElementById('panel-kanban').classList.add('hidden');
+            document.getElementById('panel-gantt').classList.add('hidden');
+            document.getElementById('panel-inventario').classList.add('hidden');
+            
+            // Quitar estilos activos de los botones
+            document.getElementById('tab-btn-resumen').className = inactiveTabClass;
+            document.getElementById('tab-btn-kanban').className = inactiveTabClass;
+            document.getElementById('tab-btn-gantt').className = inactiveTabClass;
+            document.getElementById('tab-btn-inventario').className = inactiveTabClass;
+            
+            // Mostrar panel objetivo
+            document.getElementById('panel-' + tabName).classList.remove('hidden');
+            
+            // Resaltar botón activo
+            document.getElementById('tab-btn-' + tabName).className = activeTabClass;
+            
+            // Actualizar URL sin recargar la página para una experiencia SPA impecable
+            const url = new URL(window.location);
+            url.searchParams.set('tab', tabName);
+            window.history.replaceState({}, '', url);
+
+            // Hack de resize necesario para recalcular los límites de Mermaid JS en divs ocultos
+            if (tabName === 'gantt') {
+                setTimeout(() => {
+                    window.dispatchEvent(new Event('resize'));
+                }, 50);
+            }
+        }
+
+        function togglePoolFields(tipo) {
+            const divMaterial = document.getElementById('pool-fields-material');
+            const divLabor = document.getElementById('pool-fields-labor');
+            const inputPrecio = document.getElementById('pool-precio');
+            const inputCantidad = document.getElementById('pool-cantidad');
+            const inputMonto = document.getElementById('pool-monto-total');
+            
+            if (tipo === 'mano_de_obra') {
+                divMaterial.classList.add('hidden');
+                divLabor.classList.remove('hidden');
+                inputPrecio.required = false;
+                inputCantidad.required = false;
+                inputMonto.required = true;
+            } else {
+                divMaterial.classList.remove('hidden');
+                divLabor.classList.add('hidden');
+                inputPrecio.required = true;
+                inputCantidad.required = true;
+                inputMonto.required = false;
+            }
+        }
+
         function openRecurso(id, nombre) {
             document.getElementById('act-target-name').innerText = nombre;
-            document.getElementById('form-rec').action = "/recursos/{{proyecto.id if proyecto else ''}}/" + id;
+            // Pasamos dinámicamente la pestaña actual en el form action para no desorientar al usuario al recargar
+            const urlParams = new URLSearchParams(window.location.search);
+            const activeTab = urlParams.get('tab') || 'resumen';
+            document.getElementById('form-rec').action = "/recursos/{{proyecto.id if proyecto else ''}}/" + id + "?tab=" + activeTab;
             
             const select = document.getElementById('select-pool-recurso');
-            const cantidadInput = document.getElementById('input-cantidad-rec');
             const infoText = document.getElementById('pool-item-info');
+            const divAsignarMaterial = document.getElementById('rec-fields-material');
+            const divAsignarLabor = document.getElementById('rec-fields-labor');
             
-            // Limpiamos las opciones previas
+            const inputCant = document.getElementById('input-cantidad-rec');
+            const inputMonto = document.getElementById('input-monto-rec');
+            const inputFechaPago = document.getElementById('input-fecha-pago-rec');
+            
+            // Limpiamos las opciones del selector
             select.innerHTML = '<option value="">-- Seleccionar del Inventario --</option>';
             
             let count = 0;
             recursosPool.forEach(item => {
-                if (item.cantidad_disponible > 0) {
-                    const opt = document.createElement('option');
-                    opt.value = item.id;
-                    opt.textContent = `${item.nombre} (${item.tipo === 'mano_de_obra' ? 'Mano de Obra' : 'Material'}) - Disp: ${item.cantidad_disponible}`;
-                    opt.dataset.disponible = item.cantidad_disponible;
-                    opt.dataset.precio = item.precio;
-                    select.appendChild(opt);
-                    count++;
+                const opt = document.createElement('option');
+                opt.value = item.id;
+                
+                if (item.tipo === 'mano_de_obra') {
+                    if (parseFloat(item.monto_disponible) > 0) {
+                        opt.textContent = `${item.nombre} (Dinero Disponible: $${parseFloat(item.monto_disponible).toFixed(2)})`;
+                        opt.dataset.tipo = 'mano_de_obra';
+                        opt.dataset.disponible = item.monto_disponible;
+                        select.appendChild(opt);
+                        count++;
+                    }
+                } else {
+                    if (parseInt(item.cantidad_disponible) > 0) {
+                        opt.textContent = `${item.nombre} (Stock Disponible: ${item.cantidad_disponible})`;
+                        opt.dataset.tipo = 'material';
+                        opt.dataset.disponible = item.cantidad_disponible;
+                        opt.dataset.precio = item.precio;
+                        select.appendChild(opt);
+                        count++;
+                    }
                 }
             });
             
             if (count === 0) {
-                infoText.innerHTML = '<span class="text-rose-500 font-bold">¡Atención! No hay recursos con unidades disponibles en el inventario general del proyecto. Agrega o libera recursos primero.</span>';
-                cantidadInput.disabled = true;
+                infoText.innerHTML = '<span class="text-rose-500 font-bold">¡Atención! No hay recursos o fondos con saldos disponibles en el inventario general de este proyecto.</span>';
+                divAsignarMaterial.classList.add('hidden');
+                divAsignarLabor.classList.add('hidden');
             } else {
-                infoText.innerHTML = 'Selecciona un recurso para ver su disponibilidad y costo.';
-                cantidadInput.disabled = false;
+                infoText.innerHTML = 'Selecciona un recurso para ver su disponibilidad.';
+                divAsignarMaterial.classList.add('hidden');
+                divAsignarLabor.classList.add('hidden');
             }
             
             select.onchange = function() {
                 const selectedOpt = select.options[select.selectedIndex];
                 if (selectedOpt && selectedOpt.value) {
-                    const disp = selectedOpt.dataset.disponible;
-                    const precio = selectedOpt.dataset.precio;
-                    cantidadInput.max = disp;
-                    cantidadInput.value = 1;
-                    infoText.innerHTML = `Precio Unitario: <strong class="text-slate-900">$${parseFloat(precio).toFixed(2)}</strong> | Stock Disponible: <strong class="text-slate-900">${disp}</strong>`;
+                    const tipo = selectedOpt.dataset.tipo;
+                    const disp = parseFloat(selectedOpt.dataset.disponible);
+                    
+                    if (tipo === 'mano_de_obra') {
+                        divAsignarMaterial.classList.add('hidden');
+                        divAsignarLabor.classList.remove('hidden');
+                        inputCant.required = false;
+                        inputMonto.required = true;
+                        inputFechaPago.required = true;
+                        inputMonto.max = disp;
+                        inputMonto.value = "";
+                        infoText.innerHTML = `Presupuesto Disponible: <strong class="text-slate-900">$${disp.toFixed(2)}</strong>`;
+                    } else {
+                        const precio = parseFloat(selectedOpt.dataset.precio);
+                        divAsignarMaterial.classList.remove('hidden');
+                        divAsignarLabor.classList.add('hidden');
+                        inputCant.required = true;
+                        inputMonto.required = false;
+                        inputFechaPago.required = false;
+                        inputCant.max = disp;
+                        inputCant.value = 1;
+                        infoText.innerHTML = `Precio Unitario: <strong class="text-slate-900">$${precio.toFixed(2)}</strong> | Unidades Disponibles: <strong class="text-slate-900">${disp}</strong>`;
+                    }
                 } else {
-                    infoText.innerHTML = 'Selecciona un recurso para ver su disponibilidad y costo.';
+                    divAsignarMaterial.classList.add('hidden');
+                    divAsignarLabor.classList.add('hidden');
+                    infoText.innerHTML = 'Selecciona un recurso para ver su disponibilidad.';
                 }
             };
             
@@ -738,7 +942,8 @@ def index():
     p_id = request.args.get("id")
     p_actual = PROYECTOS_DB.get(p_id)
     metricas = calcular_metricas(p_actual) if p_actual else {}
-    return render_template_string(INDEX_HTML, proyectos=PROYECTOS_DB, proyecto=p_actual, m=metricas)
+    active_tab = request.args.get("tab", "resumen")
+    return render_template_string(INDEX_HTML, proyectos=PROYECTOS_DB, proyecto=p_actual, m=metricas, active_tab=active_tab)
 
 @app.route("/proyectos", methods=["POST"])
 def crear_p():
@@ -753,7 +958,7 @@ def crear_p():
         "actividades": []
     }
     flash(f"Proyecto '{request.form['nombre']}' creado correctamente.", "success")
-    return redirect(url_for("index", id=id_p))
+    return redirect(url_for("index", id=id_p, tab="resumen"))
 
 @app.route("/proyectos/<p_id>/eliminar", methods=["GET"])
 def eliminar_p(p_id):
@@ -770,19 +975,31 @@ def add_recurso_pool(p_id):
     if p:
         nombre = request.form["nombre"]
         tipo = request.form["tipo"]
-        precio = float(request.form["precio"])
-        cantidad = int(request.form["cantidad"])
         
-        p["recursos_pool"].append({
-            "id": str(uuid.uuid4())[:6],
-            "nombre": nombre,
-            "tipo": tipo,
-            "precio": precio,
-            "cantidad_total": cantidad,
-            "cantidad_disponible": cantidad
-        })
-        flash(f"Recurso '{nombre}' añadido al pool general del proyecto.", "success")
-    return redirect(url_for("index", id=p_id))
+        if tipo == "mano_de_obra":
+            monto = float(request.form.get("monto_total", 0.0))
+            p["recursos_pool"].append({
+                "id": str(uuid.uuid4())[:6],
+                "nombre": nombre,
+                "tipo": tipo,
+                "monto_total": monto,
+                "monto_disponible": monto
+            })
+            flash(f"Fondo de mano de obra '{nombre}' añadido con ${monto:,.2f} al pool.", "success")
+        else:
+            precio = float(request.form["precio"])
+            cantidad = int(request.form["cantidad"])
+            p["recursos_pool"].append({
+                "id": str(uuid.uuid4())[:6],
+                "nombre": nombre,
+                "tipo": tipo,
+                "precio": precio,
+                "cantidad_total": cantidad,
+                "cantidad_disponible": cantidad
+            })
+            flash(f"Material '{nombre}' añadido al pool.", "success")
+            
+    return redirect(url_for("index", id=p_id, tab="inventario"))
 
 @app.route("/proyectos/<p_id>/recursos-pool/<rp_id>/eliminar")
 def eliminar_recurso_pool(p_id, rp_id):
@@ -790,13 +1007,18 @@ def eliminar_recurso_pool(p_id, rp_id):
     if p:
         recurso = next((r for r in p.get("recursos_pool", []) if r["id"] == rp_id), None)
         if recurso:
-            # Validación: si se han asignado unidades, no se puede eliminar de golpe
-            if recurso["cantidad_disponible"] < recurso["cantidad_total"]:
-                flash("No se puede eliminar: tiene unidades asignadas en actividades vigentes.", "error")
+            # Validación: si se han consumido fondos o stock, no se puede eliminar directo
+            if recurso["tipo"] == "mano_de_obra":
+                is_dirty = recurso["monto_disponible"] < recurso["monto_total"]
+            else:
+                is_dirty = recurso["cantidad_disponible"] < recurso["cantidad_total"]
+                
+            if is_dirty:
+                flash("No se puede eliminar: tiene fondos o unidades asignadas en actividades vigentes.", "error")
             else:
                 p["recursos_pool"] = [r for r in p["recursos_pool"] if r["id"] != rp_id]
                 flash("Recurso eliminado del inventario general.", "success")
-    return redirect(url_for("index", id=p_id))
+    return redirect(url_for("index", id=p_id, tab="inventario"))
 
 @app.route("/actividades/<p_id>", methods=["POST"])
 def crear_act(p_id):
@@ -814,8 +1036,8 @@ def crear_act(p_id):
             "fecha_fin": None, 
             "recursos": []
         })
-        flash(f"Actividad '{nombre_act}' guardada como Pendiente sin fechas.", "success")
-    return redirect(url_for("index", id=p_id))
+        flash(f"Actividad '{nombre_act}' guardada como Pendiente en el Kanban.", "success")
+    return redirect(url_for("index", id=p_id, tab="kanban"))
 
 @app.route("/actividades/<p_id>/<act_id>/eliminar", methods=["GET"])
 def eliminar_act(p_id, act_id):
@@ -827,11 +1049,16 @@ def eliminar_act(p_id, act_id):
             for r in actividad["recursos"]:
                 pool_item = next((pi for pi in p.get("recursos_pool", []) if pi["id"] == r.get("pool_id")), None)
                 if pool_item:
-                    pool_item["cantidad_disponible"] += r["cantidad"]
+                    if r["tipo"] == "mano_de_obra":
+                        pool_item["monto_disponible"] += r["monto"]
+                    else:
+                        pool_item["cantidad_disponible"] += r["cantidad"]
                     
         p["actividades"] = [act for act in p["actividades"] if act["id"] != act_id]
-        flash("Actividad removida y sus recursos asignados devueltos al pool.", "success")
-    return redirect(url_for("index", id=p_id))
+        flash("Actividad removida y sus recursos liberados al pool.", "success")
+        
+    tab = request.args.get("tab", "resumen")
+    return redirect(url_for("index", id=p_id, tab=tab))
 
 # Transición avanzada de estados del Kanban
 @app.route("/actividades/<p_id>/<act_id>/estado-kanban", methods=["POST"])
@@ -857,7 +1084,7 @@ def cambiar_estado_kanban(p_id, act_id):
                     
                 flash(f"Actividad '{act['nombre']}' movida a {nuevo_estado}.", "success")
                 break
-    return redirect(url_for("index", id=p_id))
+    return redirect(url_for("index", id=p_id, tab="kanban"))
 
 # Asignación descontando del Pool general del proyecto
 @app.route("/recursos/<p_id>/<act_id>", methods=["POST"])
@@ -865,42 +1092,67 @@ def add_rec(p_id, act_id):
     p = PROYECTOS_DB.get(p_id)
     if p:
         pool_id = request.form.get("pool_id")
-        cantidad_solicitada = int(request.form.get("cantidad", 1))
-        
-        # Buscar el recurso en el pool general
         pool_item = next((r for r in p.get("recursos_pool", []) if r["id"] == pool_id), None)
+        
         if not pool_item:
             flash("El recurso seleccionado no existe en el inventario general.", "error")
-            return redirect(url_for("index", id=p_id))
+            return redirect(url_for("index", id=p_id, tab="resumen"))
             
-        if cantidad_solicitada > pool_item["cantidad_disponible"]:
-            flash(f"Stock insuficiente en el pool general. Disponible: {pool_item['cantidad_disponible']}", "error")
-            return redirect(url_for("index", id=p_id))
+        if pool_item["tipo"] == "mano_de_obra":
+            monto_solicitado = float(request.form.get("monto", 0.0))
+            fecha_pago = request.form.get("fecha_pago")
             
-        # Descontar stock del pool general
-        pool_item["cantidad_disponible"] -= cantidad_solicitada
-        
-        # Agregar a la actividad
-        for act in p["actividades"]:
-            if act["id"] == act_id:
-                # Si el recurso ya existía en la actividad, sumamos la cantidad
-                existente = next((r for r in act["recursos"] if r.get("pool_id") == pool_id), None)
-                if existente:
-                    existente["cantidad"] += cantidad_solicitada
-                else:
+            if monto_solicitado > pool_item["monto_disponible"]:
+                flash(f"Fondos insuficientes. Disponible en Pool: ${pool_item['monto_disponible']:,.2f}", "error")
+                return redirect(url_for("index", id=p_id, tab="resumen"))
+                
+            # Descontar saldo monetario disponible
+            pool_item["monto_disponible"] -= monto_solicitado
+            
+            # Buscar actividad e insertar pago
+            for act in p["actividades"]:
+                if act["id"] == act_id:
                     act["recursos"].append({
                         "id": str(uuid.uuid4())[:6],
                         "pool_id": pool_id,
                         "nombre": pool_item["nombre"],
-                        "tipo": pool_item["tipo"],
-                        "precio": pool_item["precio"],
-                        "cantidad": cantidad_solicitada
+                        "tipo": "mano_de_obra",
+                        "monto": monto_solicitado,
+                        "fecha_pago": fecha_pago
                     })
-                flash(f"Asignado(s) {cantidad_solicitada} de '{pool_item['nombre']}' a la actividad.", "success")
-                break
-    return redirect(url_for("index", id=p_id))
+                    flash(f"Pago de mano de obra imputado exitosamente por ${monto_solicitado:,.2f}.", "success")
+                    break
+        else:
+            cantidad_solicitada = int(request.form.get("cantidad", 1))
+            if cantidad_solicitada > pool_item["cantidad_disponible"]:
+                flash(f"Stock físico insuficiente. Disponible: {pool_item['cantidad_disponible']} unidades", "error")
+                return redirect(url_for("index", id=p_id, tab="resumen"))
+                
+            # Descontar unidades físicas
+            pool_item["cantidad_disponible"] -= cantidad_solicitada
+            
+            # Buscar actividad e insertar material
+            for act in p["actividades"]:
+                if act["id"] == act_id:
+                    existente = next((r for r in act["recursos"] if r.get("pool_id") == pool_id), None)
+                    if existente:
+                        existente["cantidad"] += cantidad_solicitada
+                    else:
+                        act["recursos"].append({
+                            "id": str(uuid.uuid4())[:6],
+                            "pool_id": pool_id,
+                            "nombre": pool_item["nombre"],
+                            "tipo": "material",
+                            "precio": pool_item["precio"],
+                            "cantidad": cantidad_solicitada
+                        })
+                    flash(f"Asignado(s) {cantidad_solicitada} de '{pool_item['nombre']}' a la actividad.", "success")
+                    break
+                    
+    tab = request.args.get("tab", "resumen")
+    return redirect(url_for("index", id=p_id, tab=tab))
 
-# Desvincular de la actividad e incrementar stock al Pool general
+# Desvincular de la actividad e incrementar stock/saldos al Pool general
 @app.route("/recursos/<p_id>/<act_id>/<rec_id>/eliminar", methods=["GET"])
 def eliminar_rec(p_id, act_id, rec_id):
     p = PROYECTOS_DB.get(p_id)
@@ -910,18 +1162,22 @@ def eliminar_rec(p_id, act_id, rec_id):
                 recurso_act = next((r for r in act["recursos"] if r["id"] == rec_id), None)
                 if recurso_act:
                     pool_id = recurso_act.get("pool_id")
-                    cant_retornada = recurso_act["cantidad"]
                     
-                    # Devolver stock al pool general
+                    # Devolver stock o presupuesto al pool general
                     pool_item = next((r for r in p.get("recursos_pool", []) if r["id"] == pool_id), None)
                     if pool_item:
-                        pool_item["cantidad_disponible"] += cant_retornada
+                        if recurso_act["tipo"] == "mano_de_obra":
+                            pool_item["monto_disponible"] += recurso_act["monto"]
+                        else:
+                            pool_item["cantidad_disponible"] += recurso_act["cantidad"]
                     
                     # Remover de la actividad
                     act["recursos"] = [r for r in act["recursos"] if r["id"] != rec_id]
-                    flash("Recurso liberado de la actividad. Stock incrementado en el pool general.", "success")
+                    flash("Recurso desvinculado. El stock/saldo ha sido devuelto al inventario general.", "success")
                     break
-    return redirect(url_for("index", id=p_id))
+                    
+    tab = request.args.get("tab", "resumen")
+    return redirect(url_for("index", id=p_id, tab=tab))
 
 if __name__ == "__main__":
     app.run(debug=True)
