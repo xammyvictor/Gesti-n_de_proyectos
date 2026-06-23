@@ -72,12 +72,18 @@ PROYECTOS_DB = {
 # Nombre de la hoja de cálculo de Google Drive
 SPREADSHEET_NAME = "GestorProyectosDB"
 
+# Variable global de depuración para almacenar el estado exacto de la conexión
+LAST_CONNECTION_ERROR = None
+
 def obtener_cliente_sheets():
     """Autentica y devuelve el cliente de Google Sheets si existen las credenciales"""
+    global LAST_CONNECTION_ERROR
     if not HAS_GOOGLE_LIBS:
+        LAST_CONNECTION_ERROR = "Faltan librerías gspread o google-auth en requirements.txt"
         return None
     creds_json = os.environ.get("GOOGLE_CREDENTIALS")
     if not creds_json:
+        LAST_CONNECTION_ERROR = "Falta configurar la variable GOOGLE_CREDENTIALS en Vercel"
         return None
     try:
         # Limpieza robusta del JSON para salvaguardar errores de copia y pega
@@ -86,6 +92,9 @@ def obtener_cliente_sheets():
             creds_json = creds_json[1:-1]
         elif creds_json.startswith('"') and creds_json.endswith('"'):
             creds_json = creds_json[1:-1]
+            
+        # Reemplazar escapes de comillas accidentales
+        creds_json = creds_json.replace('\\"', '"')
             
         info = json.loads(creds_json)
         
@@ -98,13 +107,22 @@ def obtener_cliente_sheets():
             "https://www.googleapis.com/auth/drive"
         ]
         creds = Credentials.from_service_account_info(info, scopes=scopes)
-        return gspread.authorize(creds)
+        client = gspread.authorize(creds)
+        
+        # Si la conexión tiene éxito, limpiamos cualquier error previo
+        LAST_CONNECTION_ERROR = None
+        return client
+    except json.JSONDecodeError as json_err:
+        LAST_CONNECTION_ERROR = f"Error en formato JSON: {str(json_err)}"
+        return None
     except Exception as e:
+        LAST_CONNECTION_ERROR = f"Fallo de conexión: {str(e)}"
         print("Error en autenticacion de Google Sheets:", e)
         return None
 
 def inicializar_hoja_calculo():
     """Busca la hoja de cálculo GestorProyectosDB, si no existe la crea"""
+    global LAST_CONNECTION_ERROR
     client = obtener_cliente_sheets()
     if not client:
         return None
@@ -119,7 +137,13 @@ def inicializar_hoja_calculo():
         if not ws.row_values(1):
             ws.append_row(["id", "nombre", "presupuesto", "fecha_inicio", "fecha_fin_tentativa", "datos_json"])
         return ws
+    except gspread.exceptions.APIError as api_err:
+        # Captura específica de permisos (por ejemplo, si no se ha compartido la hoja con el correo de la cuenta de servicio)
+        LAST_CONNECTION_ERROR = f"Error de Google API (¿Compartiste la hoja con el correo de la Cuenta de Servicio?): {str(api_err)}"
+        print("Error de permisos/API de Google Sheets:", api_err)
+        return None
     except Exception as e:
+        LAST_CONNECTION_ERROR = f"Error de inicialización: {str(e)}"
         print("Error al inicializar la hoja de calculo:", e)
         return None
 
@@ -356,9 +380,16 @@ INDEX_HTML = """
                     <i class="fa-solid fa-table"></i> Google Sheets Activo
                 </div>
                 {% else %}
-                <div class="text-[9px] md:text-xs text-amber-400 bg-amber-950/50 px-2.5 py-1 rounded-full border border-amber-800 flex items-center gap-1 font-semibold" title="Configura GOOGLE_CREDENTIALS en Vercel para persistencia real">
-                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                    <i class="fa-solid fa-memory"></i> Memoria Local (Temporal)
+                <div class="flex flex-col items-end">
+                    <div class="text-[9px] md:text-xs text-amber-400 bg-amber-950/50 px-2.5 py-1 rounded-full border border-amber-800 flex items-center gap-1 font-semibold" title="Configura GOOGLE_CREDENTIALS en Vercel para persistencia real">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                        <i class="fa-solid fa-memory"></i> Memoria Local (Temporal)
+                    </div>
+                    {% if connection_error %}
+                    <span class="text-[9px] text-rose-300 font-semibold mt-1 max-w-[200px] text-right truncate block hover:whitespace-normal" title="{{ connection_error }}">
+                        ⚠️ {{ connection_error }}
+                    </span>
+                    {% endif %}
                 </div>
                 {% endif %}
                 <div class="text-[10px] md:text-xs text-slate-400">v2.5 | Móvil</div>
@@ -612,6 +643,7 @@ INDEX_HTML = """
                                                         <td class="py-2.5 text-right font-medium">
                                                             {% if r.tipo == 'mano_de_obra' %}
                                                                 -
+                                                            </button>
                                                             {% else %}
                                                                 ${{"{:,.2f}".format(r.precio)}}
                                                             {% endif %}
@@ -1282,7 +1314,8 @@ def index():
         proyecto=p_actual, 
         m=metricas, 
         active_tab=active_tab,
-        sheets_connected=sheets_connected
+        sheets_connected=sheets_connected,
+        connection_error=LAST_CONNECTION_ERROR
     )
 
 @app.route("/proyectos", methods=["POST"])
