@@ -171,14 +171,20 @@ INDEX_HTML = """
             max-width: 100% !important;
             height: auto !important;
         }
-        /* Color personalizado para actividades FINALIZADAS (done) en el GANTT */
-        .mermaid rect.taskDone {
+        /* Selectores de color robustos para actividades FINALIZADAS (done) en el GANTT */
+        .mermaid rect.task.done,
+        .mermaid rect.done,
+        .mermaid .taskDone,
+        .mermaid .done {
             fill: #10b981 !important;
             stroke: #059669 !important;
             fill-opacity: 0.9 !important;
         }
-        /* Color personalizado para actividades INICIADAS (active) en el GANTT */
-        .mermaid rect.taskActive {
+        /* Selectores de color robustos para actividades INICIADAS (active) en el GANTT */
+        .mermaid rect.task.active,
+        .mermaid rect.active,
+        .mermaid .taskActive,
+        .mermaid .active {
             fill: #3b82f6 !important;
             stroke: #1d4ed8 !important;
             fill-opacity: 0.9 !important;
@@ -578,9 +584,12 @@ INDEX_HTML = """
                             <p class="text-xs text-slate-500 mb-6">Visualización temporal de las actividades en curso y finalizadas. Las actividades pendientes se excluyen automáticamente para evitar incoherencias en el gráfico.</p>
                             
                             {% if m.has_gantt_tasks %}
-                                <div class="mermaid overflow-x-auto bg-slate-50 p-6 rounded-2xl border">
+                                <!-- El contenedor ahora tiene ID 'gantt-container' para poder ubicarlo por JS -->
+                                <div class="mermaid overflow-x-auto bg-slate-50 p-6 rounded-2xl border" id="gantt-container">
                                     {{ m.gantt_code|safe }}
                                 </div>
+                                <!-- Almacenamos el código raw para que no se pierda al compilar -->
+                                <script type="text/plain" id="gantt-raw-source">{{ m.gantt_code|safe }}</script>
                             {% else %}
                                 <div class="text-center py-16 text-slate-400 text-sm italic bg-slate-50 rounded-2xl border border-dashed">
                                     <i class="fa-regular fa-clock text-4xl mb-3 block text-slate-300"></i>
@@ -864,20 +873,24 @@ INDEX_HTML = """
             url.searchParams.set('tab', tabName);
             window.history.replaceState({}, '', url);
 
-            // Trigger Mermaid GANTT compilation when switching to the GANTT tab
+            // Re-renderizado seguro del GANTT al cambiar de pestaña
             if (tabName === 'gantt') {
                 setTimeout(async () => {
-                    const mermaidDivs = document.querySelectorAll('.mermaid');
-                    mermaidDivs.forEach(div => {
-                        div.removeAttribute('data-processed');
-                    });
-                    if (window.mermaid) {
-                        try {
-                            await window.mermaid.run({
-                                nodes: mermaidDivs
-                            });
-                        } catch (err) {
-                            console.error("Mermaid run error:", err);
+                    const ganttContainer = document.getElementById('gantt-container');
+                    const ganttSource = document.getElementById('gantt-raw-source');
+                    if (ganttContainer && ganttSource) {
+                        // Restauramos el código original de Mermaid antes de compilar
+                        const rawCode = ganttSource.textContent;
+                        ganttContainer.innerHTML = rawCode;
+                        ganttContainer.removeAttribute('data-processed');
+                        if (window.mermaid) {
+                            try {
+                                await window.mermaid.run({
+                                    nodes: [ganttContainer]
+                                });
+                            } catch (err) {
+                                console.error("Mermaid run error:", err);
+                            }
                         }
                     }
                 }, 50);
