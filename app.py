@@ -146,7 +146,9 @@ INDEX_HTML = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8"><title>Control Proyectos v2.3</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Control Proyectos v2.4 Mobile-First</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
@@ -167,7 +169,16 @@ INDEX_HTML = """
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+        /* Desplazamiento táctil y optimización móvil */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
         .mermaid svg {
+            width: 100% !important;
             max-width: 100% !important;
             height: auto !important;
         }
@@ -203,23 +214,23 @@ INDEX_HTML = """
         }
     </style>
 </head>
-<body class="bg-slate-100 font-sans text-slate-800">
-    <nav class="bg-slate-900 text-white p-4 shadow-xl">
+<body class="bg-slate-100 font-sans text-slate-800 flex flex-col min-h-screen">
+    <nav class="bg-slate-900 text-white p-4 shadow-xl sticky top-0 z-40">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold flex items-center gap-2">
-                <i class="fa-solid fa-chart-line text-emerald-400"></i> Gestor Gerencial de Proyectos
+            <h1 class="text-lg md:text-xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-chart-line text-emerald-400"></i> <span class="hidden xs:inline">Gestor Gerencial</span><span class="inline xs:hidden">Gestor</span>
             </h1>
-            <div class="text-xs text-slate-400">v2.3 | Control de Presupuesto Real, Actividades & GANTT</div>
+            <div class="text-[10px] md:text-xs text-slate-400">v2.4 | Optimizado Móvil</div>
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto p-6">
+    <main class="max-w-7xl w-full mx-auto p-4 md:p-6 flex-grow flex flex-col gap-6">
         
         <!-- Notificaciones Flash -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="p-4 mb-6 text-sm rounded-xl flex items-center justify-between {% if category == 'error' %}bg-rose-100 text-rose-800 border border-rose-200{% else %}bg-emerald-100 text-emerald-800 border border-emerald-200{% endif %}">
+                    <div class="p-4 text-xs md:text-sm rounded-xl flex items-center justify-between {% if category == 'error' %}bg-rose-100 text-rose-800 border border-rose-200{% else %}bg-emerald-100 text-emerald-800 border border-emerald-200{% endif %}">
                         <span class="font-medium">{{ message }}</span>
                         <button onclick="this.parentElement.style.display='none'" class="text-lg font-bold focus:outline-none">&times;</button>
                     </div>
@@ -227,114 +238,132 @@ INDEX_HTML = """
             {% endif %}
         {% endwith %}
 
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <!-- Sidebar Proyectos -->
-            <aside class="lg:col-span-1 space-y-6">
-                <div class="bg-white p-6 rounded-2xl shadow-sm border">
-                    <h2 class="font-bold mb-4 text-slate-800 flex items-center gap-2">
-                        <i class="fa-solid fa-folder-plus text-indigo-600"></i> Crear Proyecto
-                    </h2>
-                    <form action="/proyectos" method="POST" class="space-y-3 text-sm">
-                        <input type="text" name="nombre" placeholder="Nombre Proyecto" class="w-full p-2.5 border rounded-lg" required>
-                        <input type="number" name="presupuesto" placeholder="Presupuesto $" class="w-full p-2.5 border rounded-lg" required>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-400">FECHA INICIO</label>
-                                <input type="date" name="fecha_inicio" class="w-full p-1.5 border rounded" required>
+        <!-- Selector Acordeón de Proyectos exclusivo para celular -->
+        <div class="block lg:hidden bg-white rounded-2xl border shadow-sm overflow-hidden">
+            <button onclick="toggleMobileSidebar()" class="w-full p-4 flex justify-between items-center bg-slate-50 font-bold text-sm text-slate-700 hover:bg-slate-100 transition">
+                <span class="flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open text-indigo-600"></i> 📁 Cambiar / Crear Proyecto
+                </span>
+                <i id="mobile-sidebar-chevron" class="fa-solid fa-chevron-down text-xs transition-transform duration-200"></i>
+            </button>
+            <div id="mobile-sidebar-container" class="hidden p-4 border-t space-y-6">
+                <!-- El contenido se moverá aquí dinámicamente mediante JS -->
+                <div id="mobile-sidebar-target"></div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+            <!-- Sidebar Proyectos (Visible fijo en PC, móvil dentro de acordeón) -->
+            <aside id="main-sidebar" class="hidden lg:block lg:col-span-1 space-y-6">
+                <div id="sidebar-content" class="space-y-6">
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border">
+                        <h2 class="font-bold mb-3 text-slate-800 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-folder-plus text-indigo-600"></i> Crear Proyecto
+                        </h2>
+                        <form action="/proyectos" method="POST" class="space-y-3 text-xs">
+                            <input type="text" name="nombre" placeholder="Nombre Proyecto" class="w-full p-2.5 border rounded-lg" required>
+                            <input type="number" name="presupuesto" placeholder="Presupuesto $" class="w-full p-2.5 border rounded-lg" required>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-bold text-slate-400">INICIO</label>
+                                    <input type="date" name="fecha_inicio" class="w-full p-1.5 border rounded" required>
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-bold text-slate-400">FIN (TENTATIVO)</label>
+                                    <input type="date" name="fecha_fin" class="w-full p-1.5 border rounded" required>
+                                </div>
                             </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-400">FIN (TENTATIVO)</label>
-                                <input type="date" name="fecha_fin" class="w-full p-1.5 border rounded" required>
-                            </div>
+                            <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold transition">Crear</button>
+                        </form>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="text-[10px] font-bold uppercase text-slate-400 tracking-wider px-2">Listado de Proyectos</h3>
+                        <div class="space-y-2 max-h-[300px] lg:max-h-none overflow-y-auto pr-1">
+                            {% for p_id, p in proyectos.items() %}
+                            <a href="/?id={{p_id}}&tab={{ active_tab }}" class="block p-3.5 bg-white border rounded-xl hover:border-indigo-500 transition shadow-sm {% if proyecto and proyecto.id == p_id %}border-indigo-500 bg-indigo-50/30{% endif %}">
+                                <div class="font-bold text-slate-700 text-xs md:text-sm">{{p.nombre}}</div>
+                                <div class="text-[10px] text-slate-500 mt-1">Límite: {{p.fecha_fin_tentativa}}</div>
+                            </a>
+                            {% endfor %}
                         </div>
-                        <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-bold transition">Crear</button>
-                    </form>
-                </div>
-                <div class="space-y-2">
-                    <h3 class="text-xs font-bold uppercase text-slate-400 tracking-wider px-2">Listado de Proyectos</h3>
-                    {% for p_id, p in proyectos.items() %}
-                    <a href="/?id={{p_id}}&tab={{ active_tab }}" class="block p-4 bg-white border rounded-xl hover:border-indigo-500 transition shadow-sm {% if proyecto and proyecto.id == p_id %}border-indigo-500 bg-indigo-50/30{% endif %}">
-                        <div class="font-bold text-slate-700 text-sm">{{p.nombre}}</div>
-                        <div class="text-[10px] text-slate-500 mt-1">Límite: {{p.fecha_fin_tentativa}}</div>
-                    </a>
-                    {% endfor %}
+                    </div>
                 </div>
             </aside>
 
             <!-- Contenido Central -->
-            <section class="lg:col-span-3 space-y-6">
+            <section class="col-span-1 lg:col-span-3 space-y-6">
                 {% if not proyecto %}
-                    <div class="bg-white p-20 text-center rounded-3xl border-2 border-dashed text-slate-400">
-                        <i class="fa-solid fa-arrow-pointer text-4xl mb-3"></i>
-                        <p class="text-lg font-bold">Selecciona o crea un proyecto para ver el Resumen Gerencial</p>
+                    <div class="bg-white p-12 md:p-20 text-center rounded-3xl border-2 border-dashed text-slate-400 shadow-sm">
+                        <i class="fa-solid fa-arrow-pointer text-3xl md:text-4xl mb-3"></i>
+                        <p class="text-sm md:text-lg font-bold">Selecciona o crea un proyecto para ver el Resumen Gerencial</p>
                     </div>
                 {% else %}
                     <!-- Resumen Gerencial Card -->
-                    <div class="bg-slate-900 text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden mb-4">
+                    <div class="bg-slate-900 text-white p-5 md:p-8 rounded-3xl shadow-xl relative overflow-hidden">
                         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                             <div>
-                                <h2 class="text-3xl font-bold">{{proyecto.nombre}}</h2>
-                                <p class="text-slate-400 text-sm mt-1">Rango Planificado: <span class="text-emerald-400 font-semibold">{{proyecto.fecha_inicio}}</span> hasta <span class="text-emerald-400 font-semibold">{{proyecto.fecha_fin_tentativa}}</span></p>
+                                <h2 class="text-xl md:text-2xl font-bold leading-tight">{{proyecto.nombre}}</h2>
+                                <p class="text-slate-400 text-xs mt-1">Planificado: <span class="text-emerald-400 font-semibold">{{proyecto.fecha_inicio}}</span> al <span class="text-emerald-400 font-semibold">{{proyecto.fecha_fin_tentativa}}</span></p>
                             </div>
-                            <div class="flex flex-col items-end gap-2">
-                                <div class="bg-slate-800 px-4 py-2 rounded-xl text-right">
-                                    <span class="text-xs uppercase text-slate-500 font-bold block">Presupuesto General</span>
-                                    <div class="text-2xl font-black text-emerald-400">${{"{:,.2f}".format(proyecto.presupuesto)}}</div>
+                            <div class="flex flex-col sm:flex-row md:flex-col items-stretch sm:items-center md:items-end gap-2 w-full md:w-auto">
+                                <div class="bg-slate-800 px-4 py-2 rounded-xl text-left md:text-right flex-grow">
+                                    <span class="text-[10px] uppercase text-slate-500 font-bold block">Presupuesto General</span>
+                                    <div class="text-lg md:text-xl font-black text-emerald-400">${{"{:,.2f}".format(proyecto.presupuesto)}}</div>
                                 </div>
                                 <a href="/proyectos/{{proyecto.id}}/eliminar" 
                                    onclick="return confirm('¿Estás seguro de que deseas eliminar este proyecto junto con todas sus actividades y recursos de forma permanente?')" 
-                                   class="text-xs font-semibold text-rose-400 hover:text-rose-300 transition flex items-center gap-1.5 bg-rose-950/40 px-3 py-1.5 rounded-lg border border-rose-800">
+                                   class="text-xs font-semibold text-rose-400 hover:text-rose-300 transition flex items-center justify-center gap-1.5 bg-rose-950/40 px-3 py-2 rounded-lg border border-rose-800">
                                     <i class="fa-solid fa-trash-can"></i> Eliminar Proyecto
                                 </a>
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6 border-t border-slate-800">
-                            <div class="bg-slate-800/40 p-4 rounded-2xl border border-slate-700/60">
-                                <div class="text-xs text-slate-400 mb-1 font-semibold uppercase">GASTO EJECUTADO</div>
-                                <div class="text-xl font-bold text-white">${{"{:,.2f}".format(m.gasto_total)}}</div>
-                                <div class="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
-                                    <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {{m.porcentaje_gasto}}%"></div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5 border-t border-slate-800/80">
+                            <div class="bg-slate-800/40 p-3.5 rounded-xl border border-slate-700/60">
+                                <div class="text-[10px] text-slate-400 mb-1 font-semibold uppercase">GASTO EJECUTADO</div>
+                                <div class="text-base md:text-lg font-bold text-white">${{"{:,.2f}".format(m.gasto_total)}}</div>
+                                <div class="w-full bg-slate-700 h-1 rounded-full mt-2 overflow-hidden">
+                                    <div class="bg-emerald-500 h-1 rounded-full" style="width: {{m.porcentaje_gasto}}%"></div>
                                 </div>
                             </div>
-                            <div class="bg-slate-800/40 p-4 rounded-2xl border border-slate-700/60">
-                                <div class="text-xs text-slate-400 mb-1 font-semibold uppercase">DISPONIBLE</div>
-                                <div class="text-xl font-bold {% if m.disponible < 0 %}text-rose-400{% else %}text-emerald-400{% endif %}">
+                            <div class="bg-slate-800/40 p-3.5 rounded-xl border border-slate-700/60">
+                                <div class="text-[10px] text-slate-400 mb-1 font-semibold uppercase">DISPONIBLE</div>
+                                <div class="text-base md:text-lg font-bold {% if m.disponible < 0 %}text-rose-400{% else %}text-emerald-400{% endif %}">
                                     ${{"{:,.2f}".format(m.disponible)}}
                                 </div>
                             </div>
-                            <div class="bg-slate-800/40 p-4 rounded-2xl border border-slate-700/60 text-center flex flex-col justify-center">
-                                <div class="text-xs text-slate-400 mb-1 font-semibold uppercase">AVANCE FÍSICO</div>
-                                <div class="text-2xl font-black text-indigo-400">{{ "{:.1f}%".format(m.porcentaje_avance) }}</div>
-                                <div class="text-[10px] text-slate-500 font-bold">({{ m.conteo.completas }} de {{ proyecto.actividades|length }} completadas)</div>
+                            <div class="bg-slate-800/40 p-3.5 rounded-xl border border-slate-700/60 flex flex-col justify-center">
+                                <div class="text-[10px] text-slate-400 mb-1 font-semibold uppercase">AVANCE FÍSICO</div>
+                                <div class="text-base md:text-lg font-black text-indigo-400">{{ "{:.1f}%".format(m.porcentaje_avance) }}</div>
+                                <div class="text-[9px] text-slate-500 font-bold">({{ m.conteo.completas }} de {{ proyecto.actividades|length }} completadas)</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Menú de Pestañas (Tabs) -->
-                    <div class="flex flex-wrap gap-2 border-b border-slate-200 pb-4 mb-6">
-                        <button id="tab-btn-resumen" onclick="switchTab('resumen')" class="flex items-center gap-2 px-5 py-3 text-sm font-semibold transition rounded-xl">
-                            <i class="fa-solid fa-chart-pie"></i> Resumen de Costos
+                    <!-- Menú de Pestañas (Tabs) adaptado con scroll táctil en celular -->
+                    <div class="flex flex-nowrap md:flex-wrap gap-2 border-b border-slate-200 pb-2 overflow-x-auto no-scrollbar scroll-smooth">
+                        <button id="tab-btn-resumen" onclick="switchTab('resumen')" class="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold transition rounded-xl">
+                            <i class="fa-solid fa-chart-pie"></i> Costos
                         </button>
-                        <button id="tab-btn-kanban" onclick="switchTab('kanban')" class="flex items-center gap-2 px-5 py-3 text-sm font-semibold transition rounded-xl">
-                            <i class="fa-solid fa-table-columns"></i> Tablero Kanban
+                        <button id="tab-btn-kanban" onclick="switchTab('kanban')" class="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold transition rounded-xl">
+                            <i class="fa-solid fa-table-columns"></i> Kanban
                         </button>
-                        <button id="tab-btn-gantt" onclick="switchTab('gantt')" class="flex items-center gap-2 px-5 py-3 text-sm font-semibold transition rounded-xl">
-                            <i class="fa-solid fa-stream"></i> Cronograma GANTT
+                        <button id="tab-btn-gantt" onclick="switchTab('gantt')" class="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold transition rounded-xl">
+                            <i class="fa-solid fa-stream"></i> GANTT
                         </button>
-                        <button id="tab-btn-inventario" onclick="switchTab('inventario')" class="flex items-center gap-2 px-5 py-3 text-sm font-semibold transition rounded-xl">
-                            <i class="fa-solid fa-boxes-stacked"></i> Inventario General
+                        <button id="tab-btn-inventario" onclick="switchTab('inventario')" class="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold transition rounded-xl">
+                            <i class="fa-solid fa-boxes-stacked"></i> Inventario
                         </button>
                     </div>
 
                     <!-- PESTAÑA 1: RESUMEN FINANCIERO Y DESGLOSE -->
                     <div id="panel-resumen" class="space-y-6">
                         <div class="space-y-4">
-                            <div class="flex justify-between items-center">
-                                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
-                                    <i class="fa-solid fa-gears text-indigo-600"></i> Desglose Físico y Costos de Actividades
+                            <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                                <h3 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">
+                                    <i class="fa-solid fa-gears text-indigo-600"></i> Desglose Físico y Costos
                                 </h3>
-                                <button onclick="document.getElementById('modal-act').style.display='flex'" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg transition">+ Crear Actividad</button>
+                                <button onclick="document.getElementById('modal-act').style.display='flex'" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg transition">+ Crear Actividad</button>
                             </div>
                             
                             {% if not m.actividades_calculadas %}
@@ -345,23 +374,22 @@ INDEX_HTML = """
                                 {% for act in m.actividades_calculadas %}
                                 <div class="bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow transition">
                                     <div class="p-4 bg-slate-50 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                        <div class="flex-grow">
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full {% if act.estado == 'Completada' %}bg-emerald-100 text-emerald-700{% elif act.estado == 'Iniciada' %}bg-blue-100 text-blue-700{% else %}bg-slate-200 text-slate-600{% endif %}">
+                                        <div class="flex-grow w-full">
+                                            <div class="flex items-center flex-wrap gap-2">
+                                                <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-full {% if act.estado == 'Completada' %}bg-emerald-100 text-emerald-700{% elif act.estado == 'Iniciada' %}bg-blue-100 text-blue-700{% else %}bg-slate-200 text-slate-600{% endif %}">
                                                     {{act.estado}}
                                                 </span>
-                                                <span class="text-[11px] font-medium text-slate-500">
+                                                <span class="text-[10px] font-medium text-slate-500">
                                                     {% if act.fecha_inicio %}
-                                                        Inicio: <strong class="text-slate-700">{{ act.fecha_inicio }}</strong> 
-                                                        {% if act.fecha_fin %}| Fin: <strong class="text-slate-700">{{ act.fecha_fin }}</strong>{% endif %}
+                                                        {{ act.fecha_inicio }} {% if act.fecha_fin %}al {{ act.fecha_fin }}{% endif %}
                                                     {% else %}
-                                                        Sin planificación de fechas asignadas.
+                                                        Sin fecha asignada.
                                                     {% endif %}
                                                 </span>
                                             </div>
-                                            <h4 class="font-bold text-slate-800 text-base mt-1.5">{{act.nombre}}</h4>
+                                            <h4 class="font-bold text-slate-800 text-sm md:text-base mt-1.5">{{act.nombre}}</h4>
                                             {% if act.descripcion %}
-                                                <p class="text-xs text-slate-500 mt-1">{{ act.descripcion }}</p>
+                                                <p class="text-xs text-slate-500 mt-1 line-clamp-2">{{ act.descripcion }}</p>
                                             {% endif %}
                                             
                                             <!-- Widget de Cumplimiento Financiero -->
@@ -375,69 +403,69 @@ INDEX_HTML = """
                                                     <strong class="text-slate-950">${{"{:,.2f}".format(act.subtotal_costo)}}</strong>
                                                 </div>
                                                 <div>
-                                                    <span class="text-slate-500 font-semibold block">Estado Cumplimiento:</span>
+                                                    <span class="text-slate-500 font-semibold block">Cumplimiento:</span>
                                                     {% if act.balance >= 0 %}
-                                                        <span class="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">Disponible: ${{"{:,.2f}".format(act.balance)}}</span>
+                                                        <span class="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">Disp: ${{"{:,.2f}".format(act.balance)}}</span>
                                                     {% else %}
-                                                        <span class="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block">Excedido: ${{"{:,.2f}".format(act.balance|abs)}}</span>
+                                                        <span class="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block">Exc: ${{"{:,.2f}".format(act.balance|abs)}}</span>
                                                     {% endif %}
                                                 </div>
                                             </div>
                                             
                                             <!-- Barra de Progreso del Presupuesto por Actividad -->
-                                            <div class="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
-                                                <div class="h-1.5 rounded-full {% if act.cumplimiento_pct_real > 100 %}bg-rose-500{% elif act.cumplimiento_pct_real > 85 %}bg-amber-500{% else %}bg-emerald-500{% endif %}" style="width: {{act.cumplimiento_pct}}%"></div>
+                                            <div class="w-full bg-slate-200 h-1 rounded-full mt-2 overflow-hidden">
+                                                <div class="h-1 rounded-full {% if act.cumplimiento_pct_real > 100 %}bg-rose-500{% elif act.cumplimiento_pct_real > 85 %}bg-amber-500{% else %}bg-emerald-500{% endif %}" style="width: {{act.cumplimiento_pct}}%"></div>
                                             </div>
                                         </div>
-                                        <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-                                            <button onclick="openRecurso('{{act.id}}', '{{act.nombre}}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-2 rounded-lg transition flex items-center gap-1 text-xs font-bold" title="Asignar Suministro o Mano de Obra">
-                                                <i class="fa-solid fa-plus-circle text-base"></i> Asignar Recurso
+                                        <div class="flex items-center gap-2 w-full sm:w-auto justify-end border-t pt-2 sm:border-t-0 sm:pt-0">
+                                            <button onclick="openRecurso('{{act.id}}', '{{act.nombre}}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-2 rounded-lg transition flex items-center gap-1 text-[11px] font-bold" title="Asignar Suministro o Mano de Obra">
+                                                <i class="fa-solid fa-plus-circle text-sm"></i> Asignar
                                             </button>
                                             <a href="/actividades/{{proyecto.id}}/{{act.id}}/eliminar?tab=resumen" 
                                                onclick="return confirm('¿Seguro que deseas eliminar esta actividad por completo? Los recursos consumidos retornarán automáticamente al pool.')" 
                                                class="bg-rose-50 hover:bg-rose-100 text-rose-600 p-2 rounded-lg transition" title="Eliminar Actividad">
-                                                <i class="fa-solid fa-trash-can text-base"></i>
+                                                <i class="fa-solid fa-trash-can text-sm"></i>
                                             </a>
                                         </div>
                                     </div>
-                                    <div class="p-4">
-                                        <table class="w-full text-xs text-left">
+                                    <div class="p-0 sm:p-4 overflow-x-auto">
+                                        <table class="w-full min-w-[500px] text-xs text-left">
                                             <thead>
-                                                <tr class="text-slate-400 border-b font-semibold uppercase">
-                                                    <th class="pb-2">Recurso / Insumo / Pago</th>
+                                                <tr class="text-slate-400 border-b font-semibold uppercase px-4 py-2">
+                                                    <th class="pb-2 pl-4 sm:pl-0">Recurso / Pago</th>
                                                     <th class="pb-2">Clasificación</th>
                                                     <th class="pb-2 text-right">Cantidad / Desembolso</th>
                                                     <th class="pb-2 text-right">Precio unitario</th>
                                                     <th class="pb-2 text-right">Costo Total</th>
-                                                    <th class="pb-2 text-center">Desvincular (Devolver)</th>
+                                                    <th class="pb-2 text-center">Devolver</th>
                                                 </tr>
                                             </thead>
                                             <tbody class="divide-y divide-slate-100">
                                                 {% if not act.recursos %}
                                                     <tr>
-                                                        <td colspan="6" class="py-4 text-center text-slate-400 italic">No hay recursos ni mano de obra asignada a esta actividad. Usa el botón "Asignar Recurso" para consumir del inventario o imputar pagos.</td>
+                                                        <td colspan="6" class="py-4 text-center text-slate-400 italic">No hay recursos ni mano de obra asignada.</td>
                                                     </tr>
                                                 {% else %}
                                                     {% for r in act.recursos %}
                                                     <tr class="text-slate-700">
-                                                        <td class="py-2.5 font-medium text-slate-900">
+                                                        <td class="py-2.5 pl-4 sm:pl-0 font-medium text-slate-900">
                                                             {{r.nombre}}
                                                             {% if r.tipo == 'mano_de_obra' and r.fecha_pago %}
-                                                                <span class="block text-[10px] text-slate-400 font-normal">Pagado el: {{ r.fecha_pago }}</span>
+                                                                <span class="block text-[9px] text-slate-400 font-normal">Pago: {{ r.fecha_pago }}</span>
                                                             {% endif %}
                                                         </td>
                                                         <td class="py-2.5">
                                                             {% if r.tipo == 'mano_de_obra' %}
-                                                                <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">Pago de Mano de Obra</span>
+                                                                <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[9px] font-semibold border border-amber-200">Mano de Obra</span>
                                                             {% else %}
-                                                                <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">Material</span>
+                                                                <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[9px] font-semibold border border-blue-200">Material</span>
                                                             {% endif %}
                                                         </td>
                                                         <td class="py-2.5 text-right font-semibold text-slate-900">
                                                             {% if r.tipo == 'mano_de_obra' %}
-                                                                Monto: ${{"{:,.2f}".format(r.monto)}}
+                                                                ${{"{:,.2f}".format(r.monto)}}
                                                             {% else %}
-                                                                {{r.cantidad}} Unidades
+                                                                {{r.cantidad}} Unid.
                                                             {% endif %}
                                                         </td>
                                                         <td class="py-2.5 text-right font-medium">
@@ -456,9 +484,9 @@ INDEX_HTML = """
                                                         </td>
                                                         <td class="py-2.5 text-center">
                                                             <a href="/recursos/{{proyecto.id}}/{{act.id}}/{{r.id}}/eliminar?tab=resumen" 
-                                                               onclick="return confirm('¿Deseas remover este recurso de la actividad? Las cantidades o fondos regresarán de inmediato al stock disponible.')" 
-                                                               class="text-rose-500 hover:text-rose-700 transition" title="Remover e Incrementar Stock Pool">
-                                                                <i class="fa-solid fa-trash-arrow-up text-base"></i> Devolver
+                                                               onclick="return confirm('¿Deseas remover este recurso de la actividad?')" 
+                                                               class="text-rose-500 hover:text-rose-700 transition" title="Devolver al Pool">
+                                                                <i class="fa-solid fa-trash-arrow-up text-sm"></i>
                                                             </a>
                                                         </td>
                                                     </tr>
@@ -475,35 +503,35 @@ INDEX_HTML = """
 
                     <!-- PESTAÑA 2: TABLERO KANBAN -->
                     <div id="panel-kanban" class="space-y-6 hidden">
-                        <div class="flex justify-between items-center">
-                            <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
-                                <i class="fa-solid fa-table-columns text-indigo-600"></i> Tablero Kanban de Actividades
+                        <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                            <h3 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">
+                                <i class="fa-solid fa-table-columns text-indigo-600"></i> Tablero Kanban
                             </h3>
-                            <button onclick="document.getElementById('modal-act').style.display='flex'" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg transition">+ Agregar Actividad</button>
+                            <button onclick="document.getElementById('modal-act').style.display='flex'" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg transition">+ Agregar Actividad</button>
                         </div>
 
                         <!-- Grid Kanban de 3 Columnas -->
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             
                             <!-- Columna: PENDIENTES -->
-                            <div class="bg-slate-200/60 p-4 rounded-2xl border border-slate-300/40 flex flex-col min-h-[350px]">
+                            <div class="bg-slate-200/60 p-4 rounded-2xl border border-slate-300/40 flex flex-col min-h-[250px]">
                                 <div class="flex justify-between items-center mb-3 border-b border-slate-300/60 pb-2">
                                     <span class="font-bold text-slate-700 flex items-center gap-1.5"><span class="w-3 h-3 bg-slate-400 rounded-full"></span> Pendientes</span>
                                     <span class="bg-slate-300 text-slate-700 text-xs font-bold px-2 py-0.5 rounded-full">{{ m.conteo.pendientes }}</span>
                                 </div>
-                                <div class="space-y-3 flex-grow overflow-y-auto max-h-[500px]">
+                                <div class="space-y-3 flex-grow overflow-y-auto max-h-[350px] md:max-h-[500px]">
                                     {% for act in proyecto.actividades %}
                                         {% if act.estado == 'Pendiente' %}
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200/80 space-y-2 relative">
                                                 <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
                                                 <div class="text-[10px] text-indigo-600 font-bold">
-                                                    Ppto Est: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
+                                                    Ppto: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
                                                 </div>
                                                 <div class="flex justify-between items-center pt-2">
                                                     <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">Sin Fechas</span>
                                                     <button onclick="openTransition('{{ act.id }}', '{{ act.nombre }}', '{{ act.estado }}', '{{ act.fecha_inicio }}', '{{ act.fecha_fin }}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold">
-                                                        Mover Estado <i class="fa-solid fa-angle-right"></i>
+                                                        Mover <i class="fa-solid fa-angle-right"></i>
                                                     </button>
                                                 </div>
                                             </div>
@@ -513,27 +541,27 @@ INDEX_HTML = """
                             </div>
 
                             <!-- Columna: INICIADAS -->
-                            <div class="bg-blue-100/60 p-4 rounded-2xl border border-blue-200/40 flex flex-col min-h-[350px]">
+                            <div class="bg-blue-100/60 p-4 rounded-2xl border border-blue-200/40 flex flex-col min-h-[250px]">
                                 <div class="flex justify-between items-center mb-3 border-b border-blue-300/60 pb-2">
                                     <span class="font-bold text-blue-800 flex items-center gap-1.5"><span class="w-3 h-3 bg-blue-500 rounded-full"></span> En Curso</span>
                                     <span class="bg-blue-200 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full">{{ m.conteo.iniciadas }}</span>
                                 </div>
-                                <div class="space-y-3 flex-grow overflow-y-auto max-h-[500px]">
+                                <div class="space-y-3 flex-grow overflow-y-auto max-h-[350px] md:max-h-[500px]">
                                     {% for act in proyecto.actividades %}
                                         {% if act.estado == 'Iniciada' %}
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-200 space-y-2 relative">
                                                 <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
                                                 <div class="text-[10px] text-indigo-600 font-bold">
-                                                    Ppto Est: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
+                                                    Ppto: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
                                                 </div>
                                                 <div class="text-[10px] text-slate-500">
                                                     Inicio: <strong class="text-slate-800">{{ act.fecha_inicio }}</strong>
                                                 </div>
                                                 <div class="flex justify-between items-center pt-2">
-                                                    <span class="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold">{{ act.recursos|length }} Recursos</span>
+                                                    <span class="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold">{{ act.recursos|length }} Recs</span>
                                                     <button onclick="openTransition('{{ act.id }}', '{{ act.nombre }}', '{{ act.estado }}', '{{ act.fecha_inicio }}', '{{ act.fecha_fin }}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold">
-                                                        Mover Estado <i class="fa-solid fa-angle-right"></i>
+                                                        Mover <i class="fa-solid fa-angle-right"></i>
                                                     </button>
                                                 </div>
                                             </div>
@@ -543,27 +571,27 @@ INDEX_HTML = """
                             </div>
 
                             <!-- Columna: FINALIZADAS -->
-                            <div class="bg-emerald-100/60 p-4 rounded-2xl border border-emerald-200/40 flex flex-col min-h-[350px]">
+                            <div class="bg-emerald-100/60 p-4 rounded-2xl border border-emerald-200/40 flex flex-col min-h-[250px]">
                                 <div class="flex justify-between items-center mb-3 border-b border-emerald-300/60 pb-2">
                                     <span class="font-bold text-emerald-800 flex items-center gap-1.5"><span class="w-3 h-3 bg-emerald-500 rounded-full"></span> Finalizadas</span>
                                     <span class="bg-emerald-200 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-full">{{ m.conteo.completas }}</span>
                                 </div>
-                                <div class="space-y-3 flex-grow overflow-y-auto max-h-[500px]">
+                                <div class="space-y-3 flex-grow overflow-y-auto max-h-[350px] md:max-h-[500px]">
                                     {% for act in proyecto.actividades %}
                                         {% if act.estado == 'Completada' %}
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-emerald-200 space-y-2 relative">
                                                 <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
                                                 <div class="text-[10px] text-indigo-600 font-bold">
-                                                    Ppto Est: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
+                                                    Ppto: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
                                                 </div>
                                                 <div class="text-[10px] text-slate-500">
-                                                    Desde: <strong class="text-slate-700">{{ act.fecha_inicio }}</strong> hasta <strong class="text-slate-700">{{ act.fecha_fin }}</strong>
+                                                    {{ act.fecha_inicio }} al {{ act.fecha_fin }}
                                                 </div>
                                                 <div class="flex justify-between items-center pt-2">
-                                                    <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">{{ act.recursos|length }} Recursos</span>
+                                                    <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">{{ act.recursos|length }} Recs</span>
                                                     <button onclick="openTransition('{{ act.id }}', '{{ act.nombre }}', '{{ act.estado }}', '{{ act.fecha_inicio }}', '{{ act.fecha_fin }}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold">
-                                                        Mover Estado <i class="fa-solid fa-angle-right"></i>
+                                                        Mover <i class="fa-solid fa-angle-right"></i>
                                                     </button>
                                                 </div>
                                             </div>
@@ -577,18 +605,19 @@ INDEX_HTML = """
 
                     <!-- PESTAÑA 3: CRONOGRAMA GANTT -->
                     <div id="panel-gantt" class="space-y-6 hidden">
-                        <div class="bg-white p-6 rounded-3xl border shadow-sm">
-                            <h3 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                        <div class="bg-white p-4 md:p-6 rounded-3xl border shadow-sm">
+                            <h3 class="font-bold text-slate-800 mb-2 text-sm md:text-base flex items-center gap-2">
                                 <i class="fa-solid fa-stream text-indigo-500"></i> Cronograma de Planificación GANTT
                             </h3>
-                            <p class="text-xs text-slate-500 mb-6">Visualización temporal de las actividades en curso y finalizadas. Las actividades pendientes se excluyen automáticamente para evitar incoherencias en el gráfico.</p>
+                            <p class="text-[11px] text-slate-500 mb-6">Visualización temporal de las actividades en curso y finalizadas. En dispositivos móviles, puedes arrastrar con el dedo horizontalmente para visualizar todo el diagrama.</p>
                             
                             {% if m.has_gantt_tasks %}
-                                <!-- El contenedor ahora tiene ID 'gantt-container' para poder ubicarlo por JS -->
-                                <div class="mermaid overflow-x-auto bg-slate-50 p-6 rounded-2xl border" id="gantt-container">
-                                    {{ m.gantt_code|safe }}
+                                <!-- El contenedor tiene overflow-x-auto, y la gráfica tiene un min-width para que sea legible en celular -->
+                                <div class="overflow-x-auto bg-slate-50 p-3 md:p-6 rounded-2xl border no-scrollbar">
+                                    <div class="mermaid min-w-[700px] md:min-w-0" id="gantt-container">
+                                        {{ m.gantt_code|safe }}
+                                    </div>
                                 </div>
-                                <!-- Almacenamos el código raw para que no se pierda al compilar -->
                                 <script type="text/plain" id="gantt-raw-source">{{ m.gantt_code|safe }}</script>
                             {% else %}
                                 <div class="text-center py-16 text-slate-400 text-sm italic bg-slate-50 rounded-2xl border border-dashed">
@@ -601,25 +630,25 @@ INDEX_HTML = """
 
                     <!-- PESTAÑA 4: INVENTARIO DE RECURSOS -->
                     <div id="panel-inventario" class="space-y-6 hidden">
-                        <div class="bg-white p-6 rounded-3xl border shadow-sm">
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="font-bold text-slate-800 flex items-center gap-2">
+                        <div class="bg-white p-4 md:p-6 rounded-3xl border shadow-sm">
+                            <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mb-4">
+                                <h3 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">
                                     <i class="fa-solid fa-boxes-stacked text-amber-500"></i> Inventario y Fondos de Mano de Obra
                                 </h3>
                                 <button onclick="document.getElementById('modal-pool').style.display='flex'" class="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl transition shadow-md">
-                                    <i class="fa-solid fa-plus-circle"></i> Adquirir Recurso o Fondos
+                                    + Adquirir Recurso o Fondos
                                 </button>
                             </div>
-                            <p class="text-xs text-slate-500 mb-4">Maneje los materiales por cantidad de stock y registre los fondos financieros destinados para los pagos de mano de obra para descontar de forma exacta.</p>
+                            <p class="text-xs text-slate-500 mb-4">Maneje los materiales por cantidad de stock y registre los fondos financieros destinados para los pagos de mano de obra.</p>
                             
                             <div class="overflow-x-auto">
-                                <table class="w-full text-xs text-left">
+                                <table class="w-full min-w-[500px] text-xs text-left">
                                     <thead>
                                         <tr class="text-slate-400 border-b font-semibold uppercase">
                                             <th class="pb-2">Recurso</th>
                                             <th class="pb-2">Clasificación</th>
                                             <th class="pb-2 text-right">Precio Unitario / Total</th>
-                                            <th class="pb-2 text-center">Stock Total / Asignado</th>
+                                            <th class="pb-2 text-center">Stock Total</th>
                                             <th class="pb-2 text-center">Disponible</th>
                                             <th class="pb-2 text-center">Acciones</th>
                                         </tr>
@@ -687,11 +716,11 @@ INDEX_HTML = """
 
     <!-- Modal: Nueva Actividad -->
     <div id="modal-act" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm animate-fade-in">
-        <div class="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl animate-in scale-in duration-200">
-            <h3 class="text-xl font-bold mb-4 text-slate-900 flex items-center gap-2">
+        <div class="bg-white p-6 md:p-8 rounded-3xl max-w-md w-full shadow-2xl animate-in scale-in duration-200">
+            <h3 class="text-lg md:text-xl font-bold mb-4 text-slate-900 flex items-center gap-2">
                 <i class="fa-solid fa-diagram-project text-indigo-600"></i> Registrar Actividad
             </h3>
-            <p class="text-xs text-slate-500 mb-4">La actividad se creará en estado "Pendiente" y sin fechas para que la inicie y legalice cuando lo requiera.</p>
+            <p class="text-xs text-slate-500 mb-4">La actividad se creará en estado "Pendiente" y sin fechas para que la inicie cuando lo requiera.</p>
             <form action="/actividades/{{proyecto.id if proyecto else ''}}" method="POST" class="space-y-4 text-sm">
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre de la actividad</label>
@@ -699,7 +728,7 @@ INDEX_HTML = """
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Presupuesto Estimado / Tentativo ($)</label>
-                    <input type="number" step="0.01" name="presupuesto_tentativo" placeholder="Ej. 10000.00" class="w-full p-2.5 border rounded-xl" required>
+                    <input type="number" step="0.01" name="presupuesto_tentativo" placeholder="Ej. 10000" class="w-full p-2.5 border rounded-xl" required>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Descripción</label>
@@ -715,8 +744,8 @@ INDEX_HTML = """
 
     <!-- Modal: Transición de Estados (Tablero Kanban) -->
     <div id="modal-transicion" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
-        <div class="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl">
-            <h3 class="text-lg font-bold text-slate-900 mb-1">Actualizar Estado de Actividad</h3>
+        <div class="bg-white p-6 md:p-8 rounded-3xl max-w-md w-full shadow-2xl">
+            <h3 class="text-base md:text-lg font-bold text-slate-900 mb-1">Actualizar Estado</h3>
             <p id="trans-target-name" class="text-xs text-indigo-600 font-bold mb-4"></p>
             
             <form id="form-transicion" method="POST" class="space-y-4 text-sm">
@@ -747,29 +776,28 @@ INDEX_HTML = """
         </div>
     </div>
 
-    <!-- Modal: Agregar Recurso al Inventario General del Proyecto -->
+    <!-- Modal: Agregar Recurso al Pool -->
     <div id="modal-pool" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
-        <div class="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl">
-            <h3 class="text-xl font-bold mb-4 text-slate-900 flex items-center gap-2">
-                <i class="fa-solid fa-boxes-stacked text-amber-500"></i> Registrar en Inventario / Fondos
+        <div class="bg-white p-6 md:p-8 rounded-3xl max-w-md w-full shadow-2xl">
+            <h3 class="text-lg md:text-xl font-bold mb-4 text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-boxes-stacked text-amber-500"></i> Registrar en Inventario
             </h3>
             <form action="/proyectos/{{proyecto.id if proyecto else ''}}/recursos-pool" method="POST" class="space-y-4 text-sm">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre del Recurso / Insumo / Fondo</label>
-                    <input type="text" name="nombre" placeholder="Ej. Alambre Recocido, Nómina Obreros Pavimentación" class="w-full p-2.5 border rounded-xl" required>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre del Recurso / Fondo</label>
+                    <input type="text" name="nombre" placeholder="Ej. Alambre, Nómina Obreros" class="w-full p-2.5 border rounded-xl" required>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Clasificación</label>
                     <select name="tipo" id="pool-tipo-selector" onchange="togglePoolFields(this.value)" class="w-full p-2.5 border rounded-xl" required>
                         <option value="material">Insumo / Material Físico</option>
-                        <option value="mano_de_obra">Pago de Mano de Obra (Dinero/Fondo Financiero)</option>
+                        <option value="mano_de_obra">Pago de Mano de Obra (Fondos Financieros)</option>
                     </select>
                 </div>
 
-                <!-- Campos dinámicos para materiales -->
                 <div id="pool-fields-material" class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Costo Unitario ($)</label>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Precio Unitario ($)</label>
                         <input type="number" step="0.01" name="precio" id="pool-precio" placeholder="Precio unitario" class="w-full p-2.5 border rounded-xl" required>
                     </div>
                     <div>
@@ -778,42 +806,40 @@ INDEX_HTML = """
                     </div>
                 </div>
 
-                <!-- Campos dinámicos para Mano de Obra (Monetario) -->
                 <div id="pool-fields-labor" class="hidden">
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1 font-semibold text-amber-600">Presupuesto/Fondo de Pago ($)</label>
                     <input type="number" step="0.01" name="monto_total" id="pool-monto-total" placeholder="Ej. 15000" class="w-full p-2.5 border border-amber-300 rounded-xl bg-amber-50/50">
-                    <p class="text-[10px] text-slate-400 mt-1">Defina el dinero total que tendrá de cupo disponible para pagar mano de obra.</p>
+                    <p class="text-[10px] text-slate-400 mt-1">Defina el dinero total disponible para pagar mano de obra.</p>
                 </div>
 
                 <div class="flex gap-2 pt-2">
                     <button type="button" onclick="document.getElementById('modal-pool').style.display='none'" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition">Cancelar</button>
-                    <button class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg transition">Adquirir a Inventario</button>
+                    <button class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg transition">Adquirir</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Modal: Asignar Recurso del Pool a una Actividad (Dynamic Inputs) -->
+    <!-- Modal: Asignar Recurso del Pool a una Actividad -->
     <div id="modal-rec" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
-        <div class="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl">
-            <h3 class="text-xl font-bold mb-2 text-slate-900"><i class="fa-solid fa-plus-circle text-indigo-600"></i> Consumir del Inventario</h3>
+        <div class="bg-white p-6 md:p-8 rounded-3xl max-w-md w-full shadow-2xl">
+            <h3 class="text-lg md:text-xl font-bold mb-2 text-slate-900"><i class="fa-solid fa-plus-circle text-indigo-600"></i> Consumir del Inventario</h3>
             <p class="text-xs text-slate-500 mb-4">Asignando recursos a la actividad: <strong id="act-target-name" class="text-slate-800"></strong></p>
             
             <form id="form-rec" method="POST" class="space-y-4 text-sm">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Seleccionar Recurso disponible</label>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Seleccionar Recurso</label>
                     <select name="pool_id" id="select-pool-recurso" class="w-full p-2.5 border rounded-xl" required>
-                        <!-- Se llena mediante JS -->
+                        <!-- Cargado por JS -->
                     </select>
                 </div>
                 
                 <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs text-slate-600" id="pool-item-info">
-                    Selecciona un recurso para ver su disponibilidad y costo.
+                    Selecciona un recurso para ver su disponibilidad.
                 </div>
 
-                <!-- Campos de asignación dinámicos por JS -->
                 <div id="rec-fields-material" class="hidden">
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cantidad de Unidades a Asignar</label>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cantidad a Asignar</label>
                     <input type="number" name="cantidad" id="input-cantidad-rec" min="1" value="1" class="w-full p-2.5 border rounded-xl">
                 </div>
 
@@ -839,14 +865,56 @@ INDEX_HTML = """
     <!-- Scripts de navegación y lógica interactiva de formularios -->
     <script>
         const recursosPool = {{ proyecto.recursos_pool|tojson|safe if proyecto else '[]' }};
-        const activeTabClass = "flex items-center gap-2 px-5 py-3 text-sm font-bold bg-indigo-600 text-white rounded-xl shadow-md border-b-2 border-indigo-700 transition";
-        const inactiveTabClass = "flex items-center gap-2 px-5 py-3 text-sm font-semibold bg-white text-slate-600 hover:text-indigo-600 rounded-xl hover:bg-slate-50 border border-slate-200 shadow-sm transition";
+        const activeTabClass = "whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-bold bg-indigo-600 text-white rounded-xl shadow-md border-b-2 border-indigo-700 transition";
+        const inactiveTabClass = "whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold bg-white text-slate-600 hover:text-indigo-600 rounded-xl hover:bg-slate-50 border border-slate-200 shadow-sm transition";
 
         window.onload = function() {
+            // Mover contenido de la barra lateral al contenedor móvil si está en pantalla angosta
+            adjustResponsiveSidebar();
+            window.addEventListener('resize', adjustResponsiveSidebar);
+
             // Lee el tab activo de la URL, si no está definido va por defecto a resumen
             const urlParams = new URLSearchParams(window.location.search);
             const activeTab = urlParams.get('tab') || 'resumen';
             switchTab(activeTab);
+        }
+
+        function toggleMobileSidebar() {
+            const container = document.getElementById('mobile-sidebar-container');
+            const chevron = document.getElementById('mobile-sidebar-chevron');
+            if (container.classList.contains('hidden')) {
+                container.classList.remove('hidden');
+                chevron.classList.add('rotate-180');
+            } else {
+                container.classList.add('hidden');
+                chevron.classList.remove('rotate-180');
+            }
+        }
+
+        function adjustResponsiveSidebar() {
+            const sidebar = document.getElementById('main-sidebar-content');
+            const desktopContainer = document.getElementById('main-desktop-sidebar');
+            const mobileContainer = document.getElementById('mobile-sidebar-container');
+            
+            // Inicializar el contenido del sidebar si no se ha extraído
+            let content = document.getElementById('sidebar-content');
+            
+            if (window.innerWidth < 1024) {
+                // Modo móvil: mover contenido al acordeón móvil
+                const mobileTarget = document.getElementById('mobile-sidebar-target');
+                if (content && mobileTarget && !mobileTarget.contains(content)) {
+                    mobileTarget.appendChild(content);
+                }
+            } else {
+                // Modo PC: devolver contenido al aside original
+                const desktopAside = document.getElementById('main-sidebar');
+                if (content && desktopAside && !desktopAside.contains(content)) {
+                    desktopAside.appendChild(content);
+                }
+                // Ocultar el colapsable móvil por si acaso
+                document.getElementById('mobile-sidebar-container').classList.add('hidden');
+                document.getElementById('mobile-sidebar-chevron').classList.remove('rotate-180');
+            }
         }
 
         function switchTab(tabName) {
