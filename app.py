@@ -425,7 +425,7 @@ INDEX_HTML = """
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-            <!-- Sidebar Proyectos (PC, móvil se mueve aquí) -->
+            <!-- Sidebar Proyectos -->
             <aside id="main-sidebar" class="hidden lg:block lg:col-span-1 space-y-6">
                 <div id="sidebar-content" class="space-y-6">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border">
@@ -643,7 +643,6 @@ INDEX_HTML = """
                                                         <td class="py-2.5 text-right font-medium">
                                                             {% if r.tipo == 'mano_de_obra' %}
                                                                 -
-                                                            </button>
                                                             {% else %}
                                                                 ${{"{:,.2f}".format(r.precio)}}
                                                             {% endif %}
