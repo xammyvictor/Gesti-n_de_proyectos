@@ -69,7 +69,7 @@ PROYECTOS_DB = {
     }
 }
 
-# Nombre actualizado de la hoja de cálculo
+# Nombre de la hoja de cálculo de Google Drive
 SPREADSHEET_NAME = "GestorProyectosDB"
 
 def obtener_cliente_sheets():
@@ -80,7 +80,19 @@ def obtener_cliente_sheets():
     if not creds_json:
         return None
     try:
+        # Limpieza robusta del JSON para salvaguardar errores de copia y pega
+        creds_json = creds_json.strip()
+        if creds_json.startswith("'") and creds_json.endswith("'"):
+            creds_json = creds_json[1:-1]
+        elif creds_json.startswith('"') and creds_json.endswith('"'):
+            creds_json = creds_json[1:-1]
+            
         info = json.loads(creds_json)
+        
+        # Corrección crítica: Sanear la clave privada de Google
+        if "private_key" in info:
+            info["private_key"] = info["private_key"].replace("\\n", "\n")
+            
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive"
@@ -332,7 +344,6 @@ INDEX_HTML = """
     
     <nav class="bg-slate-900 text-white p-4 shadow-xl sticky top-0 z-40">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <!-- Título corregido para mostrar siempre Gestor de Proyectos -->
             <h1 class="text-sm sm:text-lg md:text-xl font-bold flex items-center gap-2">
                 <i class="fa-solid fa-chart-line text-emerald-400"></i>
                 <span>Gestor de Proyectos</span>
@@ -369,7 +380,7 @@ INDEX_HTML = """
             {% endif %}
         {% endwith %}
 
-        <!-- Selector Acordeón de Proyectos exclusivo para celular -->
+        <!-- Selector Acordeón de Proyectos -->
         <div class="block lg:hidden bg-white rounded-2xl border shadow-sm overflow-hidden">
             <button onclick="toggleMobileSidebar()" class="w-full p-4 flex justify-between items-center bg-slate-50 font-bold text-sm text-slate-700 hover:bg-slate-100 transition">
                 <span class="flex items-center gap-2">
@@ -383,7 +394,7 @@ INDEX_HTML = """
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-            <!-- Sidebar Proyectos (Fijo en PC, móvil dentro de acordeón) -->
+            <!-- Sidebar Proyectos (PC, móvil se mueve aquí) -->
             <aside id="main-sidebar" class="hidden lg:block lg:col-span-1 space-y-6">
                 <div id="sidebar-content" class="space-y-6">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border">
@@ -651,7 +662,7 @@ INDEX_HTML = """
                                 </div>
                                 <div class="space-y-3 flex-grow overflow-y-auto max-h-[350px] md:max-h-[500px]">
                                     {% for act in proyecto.actividades %}
-                                        {% if act.estado == 'Pending' or act.estado == 'Pendiente' %}
+                                        {% if act.estado == 'Pendiente' %}
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200/80 space-y-2 relative">
                                                 <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
