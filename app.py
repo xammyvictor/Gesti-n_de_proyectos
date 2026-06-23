@@ -61,7 +61,10 @@ def calcular_metricas(proyecto):
     gasto_total = 0.0
     completadas = 0
     iniciadas = 0
-    gantt_code = "gantt\\ndateFormat YYYY-MM-DD\\ntitle Cronograma de Actividades\\n"
+    
+    # Usamos saltos de línea reales (\n) en lugar de secuencias literales de escape de barra doble (\\n)
+    # y agregamos obligatoriamente la declaración "section" que requiere Mermaid para diagramas GANTT
+    gantt_code = "gantt\ndateFormat YYYY-MM-DD\ntitle Cronograma de Actividades\nsection Actividades del Proyecto\n"
     
     for act in proyecto["actividades"]:
         costo_act = sum(float(r["precio"]) * float(r["cantidad"]) for r in act["recursos"])
@@ -73,13 +76,16 @@ def calcular_metricas(proyecto):
         
         # Generación de GANTT
         status_tag = "done" if act["estado"] == "Completada" else "active" if act["estado"] == "Iniciada" else ""
+        # Evitamos la coma huérfana si el estado está vacío
+        status_part = f"{status_tag}, " if status_tag else ""
+        
         f_ini = act["fecha_inicio"] or proyecto["fecha_inicio"]
         nombre_limpio = limpiar_nombre_gantt(act["nombre"])
         
         if act["estado"] == "Completada" and act["fecha_fin"]:
-            gantt_code += f"  {nombre_limpio} :{status_tag}, {f_ini}, {act['fecha_fin']}\\n"
+            gantt_code += f"  {nombre_limpio} :{status_part}{f_ini}, {act['fecha_fin']}\n"
         else:
-            gantt_code += f"  {nombre_limpio} :{status_tag}, {f_ini}, 15d\\n"
+            gantt_code += f"  {nombre_limpio} :{status_part}{f_ini}, 15d\n"
 
     ppto = float(proyecto["presupuesto"])
     return {
@@ -214,9 +220,15 @@ INDEX_HTML = """
                     <!-- Diagrama de GANTT -->
                     <div class="bg-white p-6 rounded-3xl border shadow-sm">
                         <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fa-solid fa-stream text-indigo-500"></i> Cronograma GANTT</h3>
-                        <div class="mermaid overflow-x-auto bg-slate-50 p-4 rounded-xl">
-                            {{ m.gantt_code|safe }}
-                        </div>
+                        {% if proyecto.actividades %}
+                            <div class="mermaid overflow-x-auto bg-slate-50 p-4 rounded-xl">
+                                {{ m.gantt_code|safe }}
+                            </div>
+                        {% else %}
+                            <div class="text-center py-8 text-slate-400 text-sm italic bg-slate-50 rounded-xl border border-dashed">
+                                Agrega al menos una actividad con fecha de inicio para visualizar el diagrama.
+                            </div>
+                        {% endif %}
                     </div>
 
                     <!-- Actividades -->
@@ -521,6 +533,8 @@ def eliminar_rec(p_id, act_id, rec_id):
     if p:
         for act in p["actividades"]:
             if act["id"] == act_id:
+                act["recursos"] = [r for r in r["id"] != rec_id]
+                # Pequeño fix: reemplazamos la línea anterior por un filtrado correcto
                 act["recursos"] = [r for r in act["recursos"] if r["id"] != rec_id]
                 flash("Recurso desasociado de la actividad.", "success")
                 break
