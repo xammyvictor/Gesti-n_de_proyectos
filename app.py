@@ -2,10 +2,19 @@
 from flask import Flask, render_template_string, request, redirect, url_for, flash
 import uuid
 import re
+import json
+import os
 from datetime import datetime
 
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    HAS_GOOGLE_LIBS = True
+except ImportError:
+    HAS_GOOGLE_LIBS = False
+
 app = Flask(__name__)
-app.secret_key = "clave_gerencial_proyectos_2024"
+app.secret_key = "clave_gestor_proyectos_2026"
 
 PROYECTOS_DB = {
     "demo": {
@@ -15,7 +24,6 @@ PROYECTOS_DB = {
         "presupuesto": 250000.0,
         "fecha_inicio": "2024-01-15",
         "fecha_fin_tentativa": "2024-08-30",
-        # Pool General de Recursos del Proyecto
         "recursos_pool": [
             {"id": "rp-1", "nombre": "Fondo Mano de Obra: Pavimentación", "tipo": "mano_de_obra", "monto_total": 50000.0, "monto_disponible": 47000.0},
             {"id": "rp-2", "nombre": "Alquiler Estación Total", "tipo": "material", "precio": 450.0, "cantidad_total": 20, "cantidad_disponible": 10},
@@ -61,6 +69,130 @@ PROYECTOS_DB = {
     }
 }
 
+# Nombre actualizado de la hoja de cálculo
+SPREADSHEET_NAME = "GestorProyectosDB"
+
+def obtener_cliente_sheets():
+    """Autentica y devuelve el cliente de Google Sheets si existen las credenciales"""
+    if not HAS_GOOGLE_LIBS:
+        return None
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    if not creds_json:
+        return None
+    try:
+        info = json.loads(creds_json)
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        creds = Credentials.from_service_account_info(info, scopes=scopes)
+        return gspread.authorize(creds)
+    except Exception as e:
+        print("Error en autenticacion de Google Sheets:", e)
+        return None
+
+def inicializar_hoja_calculo():
+    """Busca la hoja de cálculo GestorProyectosDB, si no existe la crea"""
+    client = obtener_cliente_sheets()
+    if not client:
+        return None
+    try:
+        try:
+            sh = client.open(SPREADSHEET_NAME)
+        except gspread.SpreadsheetNotFound:
+            sh = client.create(SPREADSHEET_NAME)
+        
+        ws = sh.get_worksheet(0)
+        # Si la hoja está nueva, inicializamos la fila de cabeceras
+        if not ws.row_values(1):
+            ws.append_row(["id", "nombre", "presupuesto", "fecha_inicio", "fecha_fin_tentativa", "datos_json"])
+        return ws
+    except Exception as e:
+        print("Error al inicializar la hoja de calculo:", e)
+        return None
+
+def cargar_proyectos_desde_sheets():
+    """Carga y sincroniza todos los proyectos desde Google Sheets"""
+    global PROYECTOS_DB
+    ws = inicializar_hoja_calculo()
+    if not ws:
+        return False
+    try:
+        records = ws.get_all_records()
+        nuevos_proyectos = {}
+        for r in records:
+            p_id = str(r["id"])
+            datos_extra = json.loads(r["datos_json"]) if r["datos_json"] else {}
+            
+            nuevos_proyectos[p_id] = {
+                "id": p_id,
+                "nombre": r["nombre"],
+                "descripcion": datos_extra.get("descripcion", ""),
+                "presupuesto": float(r["presupuesto"]),
+                "fecha_inicio": r["fecha_inicio"],
+                "fecha_fin_tentativa": r["fecha_fin_tentativa"],
+                "recursos_pool": datos_extra.get("recursos_pool", []),
+                "actividades": datos_extra.get("actividades", [])
+            }
+        if nuevos_proyectos:
+            PROYECTOS_DB = nuevos_proyectos
+        return True
+    except Exception as e:
+        print("Error cargando datos de Google Sheets:", e)
+        return False
+
+def guardar_proyecto_en_sheets(p_id, proyecto):
+    """Guarda o actualiza un proyecto en Google Sheets"""
+    ws = inicializar_hoja_calculo()
+    if not ws:
+        return False
+    try:
+        datos_json = json.dumps({
+            "descripcion": proyecto["descripcion"],
+            "recursos_pool": proyecto["recursos_pool"],
+            "actividades": proyecto["actividades"]
+        })
+        
+        # Buscar si ya existe la fila en la columna 1 (id)
+        celdas = ws.findall(p_id, in_column=1)
+        if celdas:
+            row_num = celdas[0].row
+            ws.update_cell(row_num, 2, proyecto["nombre"])
+            ws.update_cell(row_num, 3, float(proyecto["presupuesto"]))
+            ws.update_cell(row_num, 4, proyecto["fecha_inicio"])
+            ws.update_cell(row_num, 5, proyecto["fecha_fin_tentativa"])
+            ws.update_cell(row_num, 6, datos_json)
+        else:
+            # Insertar nueva fila
+            ws.append_row([
+                p_id,
+                proyecto["nombre"],
+                float(proyecto["presupuesto"]),
+                proyecto["fecha_inicio"],
+                proyecto["fecha_fin_tentativa"],
+                datos_json
+            ])
+        return True
+    except Exception as e:
+        print("Error guardando proyecto en Sheets:", e)
+        return False
+
+def eliminar_proyecto_en_sheets(p_id):
+    """Elimina una fila de proyecto en Google Sheets"""
+    ws = inicializar_hoja_calculo()
+    if not ws:
+        return False
+    try:
+        celdas = ws.findall(p_id, in_column=1)
+        if celdas:
+            row_num = celdas[0].row
+            ws.delete_rows(row_num)
+            return True
+        return False
+    except Exception as e:
+        print("Error eliminando proyecto de Sheets:", e)
+        return False
+
 def limpiar_nombre_gantt(txt):
     """Limpia acentos y caracteres especiales para evitar errores en Mermaid JS"""
     replacements = {
@@ -79,29 +211,24 @@ def calcular_metricas(proyecto):
     iniciadas = 0
     has_gantt_tasks = False
     
-    # Declaración básica de Mermaid GANTT con secciones dedicadas
     gantt_code = "gantt\ndateFormat YYYY-MM-DD\ntitle Cronograma de Actividades\nsection Actividades Activas\n"
-    
     actividades_calculadas = []
     
     for act in proyecto["actividades"]:
-        # El subtotal se calcula dependiendo de si es mano de obra (monto) o material (precio * cantidad)
         costo_act = 0.0
         for r in act["recursos"]:
-            if r["tipo"] == "mano_de_obra":
+            if r["tipo"] == "mano_de_obra" or r.get("tipo") == "mano_de_obra":
                 costo_act += float(r.get("monto", 0.0))
             else:
                 costo_act += float(r.get("precio", 0.0)) * float(r.get("cantidad", 0))
                 
         gasto_total += costo_act
         
-        # Conteo de estados
         if act["estado"] == "Completada": 
             completadas += 1
         elif act["estado"] == "Iniciada": 
             iniciadas += 1
         
-        # SOLAMENTE graficamos en GANTT si tiene fecha de inicio y NO está Pendiente
         if act["estado"] in ["Iniciada", "Completada"] and act["fecha_inicio"]:
             has_gantt_tasks = True
             status_tag = "done" if act["estado"] == "Completada" else "active"
@@ -114,7 +241,6 @@ def calcular_metricas(proyecto):
             else:
                 gantt_code += f"  {nombre_limpio} :{status_part}{f_ini}, 15d\n"
 
-        # Cálculo de presupuesto tentativo vs real de la actividad
         presupuesto_tentativo = float(act.get("presupuesto_tentativo", 0.0))
         balance = presupuesto_tentativo - costo_act
         cumplimiento_pct = (costo_act / presupuesto_tentativo * 100) if presupuesto_tentativo > 0 else 0
@@ -148,7 +274,7 @@ INDEX_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Control Proyectos - Gestor de Proyectos</title>
+    <title>Gestor de Proyectos</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
@@ -169,20 +295,10 @@ INDEX_HTML = """
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* Desplazamiento táctil y optimización móvil */
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        .mermaid svg {
-            width: 100% !important;
-            max-width: 100% !important;
-            height: auto !important;
-        }
-        /* Selectores de color robustos para actividades FINALIZADAS (done) en el GANTT */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .mermaid svg { width: 100% !important; max-width: 100% !important; height: auto !important; }
+        
         .mermaid rect.task.done,
         .mermaid rect.done,
         .mermaid .taskDone,
@@ -191,7 +307,6 @@ INDEX_HTML = """
             stroke: #059669 !important;
             fill-opacity: 0.9 !important;
         }
-        /* Selectores de color robustos para actividades INICIADAS (active) en el GANTT */
         .mermaid rect.task.active,
         .mermaid rect.active,
         .mermaid .taskActive,
@@ -200,7 +315,6 @@ INDEX_HTML = """
             stroke: #1d4ed8 !important;
             fill-opacity: 0.9 !important;
         }
-        /* Estilos de tipografía en el GANTT */
         .mermaid text.taskText {
             fill: #ffffff !important;
             font-family: ui-sans-serif, system-ui, sans-serif !important;
@@ -215,13 +329,29 @@ INDEX_HTML = """
     </style>
 </head>
 <body class="bg-slate-100 font-sans text-slate-800 flex flex-col min-h-screen">
+    
     <nav class="bg-slate-900 text-white p-4 shadow-xl sticky top-0 z-40">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <!-- Título corregido para mostrar siempre Gestor de Proyectos -->
             <h1 class="text-sm sm:text-lg md:text-xl font-bold flex items-center gap-2">
                 <i class="fa-solid fa-chart-line text-emerald-400"></i>
                 <span>Gestor de Proyectos</span>
             </h1>
-            <div class="text-[10px] md:text-xs text-slate-400">v2.4 | Optimizado Móvil</div>
+            
+            <div class="flex items-center gap-3">
+                {% if sheets_connected %}
+                <div class="text-[9px] md:text-xs text-emerald-400 bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-800 flex items-center gap-1 font-semibold">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <i class="fa-solid fa-table"></i> Google Sheets Activo
+                </div>
+                {% else %}
+                <div class="text-[9px] md:text-xs text-amber-400 bg-amber-950/50 px-2.5 py-1 rounded-full border border-amber-800 flex items-center gap-1 font-semibold" title="Configura GOOGLE_CREDENTIALS en Vercel para persistencia real">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                    <i class="fa-solid fa-memory"></i> Memoria Local (Temporal)
+                </div>
+                {% endif %}
+                <div class="text-[10px] md:text-xs text-slate-400">v2.5 | Móvil</div>
+            </div>
         </div>
     </nav>
 
@@ -248,13 +378,12 @@ INDEX_HTML = """
                 <i id="mobile-sidebar-chevron" class="fa-solid fa-chevron-down text-xs transition-transform duration-200"></i>
             </button>
             <div id="mobile-sidebar-container" class="hidden p-4 border-t space-y-6">
-                <!-- El contenido se moverá aquí dinámicamente mediante JS -->
                 <div id="mobile-sidebar-target"></div>
             </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-            <!-- Sidebar Proyectos (Visible fijo en PC, móvil dentro de acordeón) -->
+            <!-- Sidebar Proyectos (Fijo en PC, móvil dentro de acordeón) -->
             <aside id="main-sidebar" class="hidden lg:block lg:col-span-1 space-y-6">
                 <div id="sidebar-content" class="space-y-6">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border">
@@ -341,7 +470,7 @@ INDEX_HTML = """
                         </div>
                     </div>
 
-                    <!-- Menú de Pestañas (Tabs) adaptado con scroll táctil en celular -->
+                    <!-- Menú de Pestañas (Tabs) con scroll táctil -->
                     <div class="flex flex-nowrap md:flex-wrap gap-2 border-b border-slate-200 pb-2 overflow-x-auto no-scrollbar scroll-smooth">
                         <button id="tab-btn-resumen" onclick="switchTab('resumen')" class="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold transition rounded-xl">
                             <i class="fa-solid fa-chart-pie"></i> Costos
@@ -522,7 +651,7 @@ INDEX_HTML = """
                                 </div>
                                 <div class="space-y-3 flex-grow overflow-y-auto max-h-[350px] md:max-h-[500px]">
                                     {% for act in proyecto.actividades %}
-                                        {% if act.estado == 'Pendiente' %}
+                                        {% if act.estado == 'Pending' or act.estado == 'Pendiente' %}
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200/80 space-y-2 relative">
                                                 <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
@@ -613,7 +742,6 @@ INDEX_HTML = """
                             <p class="text-[11px] text-slate-500 mb-6">Visualización temporal de las actividades en curso y finalizadas. En dispositivos móviles, puedes arrastrar con el dedo horizontalmente para visualizar todo el diagrama.</p>
                             
                             {% if m.has_gantt_tasks %}
-                                <!-- El contenedor tiene overflow-x-auto, y la gráfica tiene un min-width para que sea legible en celular -->
                                 <div class="overflow-x-auto bg-slate-50 p-3 md:p-6 rounded-2xl border no-scrollbar">
                                     <div class="mermaid min-w-[700px] md:min-w-0" id="gantt-container">
                                         {{ m.gantt_code|safe }}
@@ -942,13 +1070,12 @@ INDEX_HTML = """
             url.searchParams.set('tab', tabName);
             window.history.replaceState({}, '', url);
 
-            // Re-renderizado seguro del GANTT al cambiar de pestaña
+            // Re-renderizado GANTT
             if (tabName === 'gantt') {
                 setTimeout(async () => {
                     const ganttContainer = document.getElementById('gantt-container');
                     const ganttSource = document.getElementById('gantt-raw-source');
                     if (ganttContainer && ganttSource) {
-                        // Restauramos el código original de Mermaid antes de compilar
                         const rawCode = ganttSource.textContent;
                         ganttContainer.innerHTML = rawCode;
                         ganttContainer.removeAttribute('data-processed');
@@ -990,7 +1117,6 @@ INDEX_HTML = """
 
         function openRecurso(id, nombre) {
             document.getElementById('act-target-name').innerText = nombre;
-            // Pasamos dinámicamente la pestaña actual en el form action para no desorientar al usuario al recargar
             const urlParams = new URLSearchParams(window.location.search);
             const activeTab = urlParams.get('tab') || 'resumen';
             document.getElementById('form-rec').action = "/recursos/{{proyecto.id if proyecto else ''}}/" + id + "?tab=" + activeTab;
@@ -1004,7 +1130,6 @@ INDEX_HTML = """
             const inputMonto = document.getElementById('input-monto-rec');
             const inputFechaPago = document.getElementById('input-fecha-pago-rec');
             
-            // Limpiamos las opciones del selector
             select.innerHTML = '<option value="">-- Seleccionar del Inventario --</option>';
             
             let count = 0;
@@ -1131,24 +1256,41 @@ INDEX_HTML = """
 
 @app.route("/")
 def index():
+    cargar_proyectos_desde_sheets()
+    
     p_id = request.args.get("id")
     p_actual = PROYECTOS_DB.get(p_id)
     metricas = calcular_metricas(p_actual) if p_actual else {}
     active_tab = request.args.get("tab", "resumen")
-    return render_template_string(INDEX_HTML, proyectos=PROYECTOS_DB, proyecto=p_actual, m=metricas, active_tab=active_tab)
+    
+    sheets_connected = obtener_cliente_sheets() is not None
+    
+    return render_template_string(
+        INDEX_HTML, 
+        proyectos=PROYECTOS_DB, 
+        proyecto=p_actual, 
+        m=metricas, 
+        active_tab=active_tab,
+        sheets_connected=sheets_connected
+    )
 
 @app.route("/proyectos", methods=["POST"])
 def crear_p():
     id_p = str(uuid.uuid4())[:6]
-    PROYECTOS_DB[id_p] = {
+    nuevo_p = {
         "id": id_p, 
         "nombre": request.form["nombre"], 
+        "descripcion": "",
         "presupuesto": float(request.form["presupuesto"]),
         "fecha_inicio": request.form["fecha_inicio"], 
         "fecha_fin_tentativa": request.form["fecha_fin"], 
         "recursos_pool": [],
         "actividades": []
     }
+    
+    PROYECTOS_DB[id_p] = nuevo_p
+    guardar_proyecto_en_sheets(id_p, nuevo_p)
+    
     flash(f"Proyecto '{request.form['nombre']}' creado correctamente.", "success")
     return redirect(url_for("index", id=id_p, tab="resumen"))
 
@@ -1157,6 +1299,7 @@ def eliminar_p(p_id):
     if p_id in PROYECTOS_DB:
         nombre = PROYECTOS_DB[p_id]["nombre"]
         del PROYECTOS_DB[p_id]
+        eliminar_proyecto_en_sheets(p_id)
         flash(f"Se ha eliminado el proyecto '{nombre}' de forma permanente.", "success")
     return redirect(url_for("index"))
 
@@ -1191,6 +1334,8 @@ def add_recurso_pool(p_id):
             })
             flash(f"Material '{nombre}' añadido al pool.", "success")
             
+        guardar_proyecto_en_sheets(p_id, p)
+            
     return redirect(url_for("index", id=p_id, tab="inventario"))
 
 @app.route("/proyectos/<p_id>/recursos-pool/<rp_id>/eliminar")
@@ -1199,7 +1344,6 @@ def eliminar_recurso_pool(p_id, rp_id):
     if p:
         recurso = next((r for r in p.get("recursos_pool", []) if r["id"] == rp_id), None)
         if recurso:
-            # Validación: si se han consumido fondos o stock, no se puede eliminar directo
             if recurso["tipo"] == "mano_de_obra":
                 is_dirty = recurso["monto_disponible"] < recurso["monto_total"]
             else:
@@ -1209,18 +1353,19 @@ def eliminar_recurso_pool(p_id, rp_id):
                 flash("No se puede eliminar: tiene fondos o unidades asignadas en actividades vigentes.", "error")
             else:
                 p["recursos_pool"] = [r for r in p["recursos_pool"] if r["id"] != rp_id]
+                guardar_proyecto_en_sheets(p_id, p)
                 flash("Recurso eliminado del inventario general.", "success")
     return redirect(url_for("index", id=p_id, tab="inventario"))
 
 @app.route("/actividades/<p_id>", methods=["POST"])
 def crear_act(p_id):
-    if p_id in PROYECTOS_DB:
+    p = PROYECTOS_DB.get(p_id)
+    if p:
         nombre_act = request.form["nombre"]
         descripcion_act = request.form.get("descripcion", "")
         presupuesto_tentativo = float(request.form.get("presupuesto_tentativo", 0.0))
         
-        # Una actividad se crea "Pendiente" sin fechas predefinidas
-        PROYECTOS_DB[p_id]["actividades"].append({
+        p["actividades"].append({
             "id": str(uuid.uuid4())[:6], 
             "nombre": nombre_act, 
             "descripcion": descripcion_act,
@@ -1230,6 +1375,8 @@ def crear_act(p_id):
             "fecha_fin": None, 
             "recursos": []
         })
+        
+        guardar_proyecto_en_sheets(p_id, p)
         flash(f"Actividad '{nombre_act}' guardada como Pendiente en el Kanban.", "success")
     return redirect(url_for("index", id=p_id, tab="kanban"))
 
@@ -1237,7 +1384,6 @@ def crear_act(p_id):
 def eliminar_act(p_id, act_id):
     p = PROYECTOS_DB.get(p_id)
     if p:
-        # Primero liberamos los recursos asignados regresándolos al Pool general
         actividad = next((act for act in p["actividades"] if act["id"] == act_id), None)
         if actividad:
             for r in actividad["recursos"]:
@@ -1249,12 +1395,12 @@ def eliminar_act(p_id, act_id):
                         pool_item["cantidad_disponible"] += r["cantidad"]
                     
         p["actividades"] = [act for act in p["actividades"] if act["id"] != act_id]
+        guardar_proyecto_en_sheets(p_id, p)
         flash("Actividad removida y sus recursos liberados al pool.", "success")
         
     tab = request.args.get("tab", "resumen")
     return redirect(url_for("index", id=p_id, tab=tab))
 
-# Transición avanzada de estados del Kanban
 @app.route("/actividades/<p_id>/<act_id>/estado-kanban", methods=["POST"])
 def cambiar_estado_kanban(p_id, act_id):
     p = PROYECTOS_DB.get(p_id)
@@ -1276,11 +1422,11 @@ def cambiar_estado_kanban(p_id, act_id):
                     act["fecha_inicio"] = request.form.get("f_ini") or datetime.now().strftime("%Y-%m-%d")
                     act["fecha_fin"] = request.form.get("f_fin") or datetime.now().strftime("%Y-%m-%d")
                     
+                guardar_proyecto_en_sheets(p_id, p)
                 flash(f"Actividad '{act['nombre']}' movida a {nuevo_estado}.", "success")
                 break
     return redirect(url_for("index", id=p_id, tab="kanban"))
 
-# Asignación descontando del Pool general del proyecto
 @app.route("/recursos/<p_id>/<act_id>", methods=["POST"])
 def add_rec(p_id, act_id):
     p = PROYECTOS_DB.get(p_id)
@@ -1297,13 +1443,11 @@ def add_rec(p_id, act_id):
             fecha_pago = request.form.get("fecha_pago")
             
             if monto_solicitado > pool_item["monto_disponible"]:
-                flash(f"Fondos insuficientes. Disponible en Pool: ${pool_item['monto_disponible']:,.2f}", "error")
+                flash(f"Fondos insuficientes. Disponible: ${pool_item['monto_disponible']:,.2f}", "error")
                 return redirect(url_for("index", id=p_id, tab="resumen"))
                 
-            # Descontar saldo monetario disponible
             pool_item["monto_disponible"] -= monto_solicitado
             
-            # Buscar actividad e insertar pago
             for act in p["actividades"]:
                 if act["id"] == act_id:
                     act["recursos"].append({
@@ -1314,18 +1458,16 @@ def add_rec(p_id, act_id):
                         "monto": monto_solicitado,
                         "fecha_pago": fecha_pago
                     })
-                    flash(f"Pago de mano de obra imputado exitosamente por ${monto_solicitado:,.2f}.", "success")
+                    flash(f"Pago de mano de obra imputado por ${monto_solicitado:,.2f}.", "success")
                     break
         else:
             cantidad_solicitada = int(request.form.get("cantidad", 1))
             if cantidad_solicitada > pool_item["cantidad_disponible"]:
-                flash(f"Stock físico insuficiente. Disponible: {pool_item['cantidad_disponible']} unidades", "error")
+                flash(f"Stock físico insuficiente. Disponible: {pool_item['cantidad_disponible']}", "error")
                 return redirect(url_for("index", id=p_id, tab="resumen"))
                 
-            # Descontar unidades físicas
             pool_item["cantidad_disponible"] -= cantidad_solicitada
             
-            # Buscar actividad e insertar material
             for act in p["actividades"]:
                 if act["id"] == act_id:
                     existente = next((r for r in act["recursos"] if r.get("pool_id") == pool_id), None)
@@ -1343,10 +1485,11 @@ def add_rec(p_id, act_id):
                     flash(f"Asignado(s) {cantidad_solicitada} de '{pool_item['nombre']}' a la actividad.", "success")
                     break
                     
+        guardar_proyecto_en_sheets(p_id, p)
+                    
     tab = request.args.get("tab", "resumen")
     return redirect(url_for("index", id=p_id, tab=tab))
 
-# Desvincular de la actividad e incrementar stock/saldos al Pool general
 @app.route("/recursos/<p_id>/<act_id>/<rec_id>/eliminar", methods=["GET"])
 def eliminar_rec(p_id, act_id, rec_id):
     p = PROYECTOS_DB.get(p_id)
@@ -1356,8 +1499,6 @@ def eliminar_rec(p_id, act_id, rec_id):
                 recurso_act = next((r for r in act["recursos"] if r["id"] == rec_id), None)
                 if recurso_act:
                     pool_id = recurso_act.get("pool_id")
-                    
-                    # Devolver stock o presupuesto al pool general
                     pool_item = next((r for r in p.get("recursos_pool", []) if r["id"] == pool_id), None)
                     if pool_item:
                         if recurso_act["tipo"] == "mano_de_obra":
@@ -1365,9 +1506,9 @@ def eliminar_rec(p_id, act_id, rec_id):
                         else:
                             pool_item["cantidad_disponible"] += recurso_act["cantidad"]
                     
-                    # Remover de la actividad
                     act["recursos"] = [r for r in act["recursos"] if r["id"] != rec_id]
-                    flash("Recurso desvinculado. El stock/saldo ha sido devuelto al inventario general.", "success")
+                    guardar_proyecto_en_sheets(p_id, p)
+                    flash("Recurso desvinculado. El stock/saldo ha sido devuelto al pool.", "success")
                     break
                     
     tab = request.args.get("tab", "resumen")
