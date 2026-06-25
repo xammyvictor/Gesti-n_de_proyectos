@@ -524,7 +524,7 @@ INDEX_HTML = """
                         <div class="space-y-4">
                             <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
                                 <h3 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">
-                                    <i class="fa-solid fa-gears text-indigo-600"></i> Desglose Físico y Costos
+                                    <i class="fa-solid fa-gears text-indigo-600"></i> Desglose de Actividades y Costos
                                 </h3>
                                 <button onclick="document.getElementById('modal-act').style.display='flex'" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg transition">+ Crear Actividad</button>
                             </div>
