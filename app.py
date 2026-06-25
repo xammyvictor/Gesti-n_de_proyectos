@@ -86,19 +86,15 @@ def obtener_cliente_sheets():
         LAST_CONNECTION_ERROR = "Falta configurar la variable GOOGLE_CREDENTIALS en Vercel"
         return None
     try:
-        # Limpieza robusta del JSON para salvaguardar errores de copia y pega
         creds_json = creds_json.strip()
         if creds_json.startswith("'") and creds_json.endswith("'"):
             creds_json = creds_json[1:-1]
         elif creds_json.startswith('"') and creds_json.endswith('"'):
             creds_json = creds_json[1:-1]
             
-        # Reemplazar escapes de comillas accidentales
         creds_json = creds_json.replace('\\"', '"')
-            
         info = json.loads(creds_json)
         
-        # Corrección crítica: Sanear la clave privada de Google
         if "private_key" in info:
             info["private_key"] = info["private_key"].replace("\\n", "\n")
             
@@ -109,7 +105,6 @@ def obtener_cliente_sheets():
         creds = Credentials.from_service_account_info(info, scopes=scopes)
         client = gspread.authorize(creds)
         
-        # Si la conexión tiene éxito, limpiamos cualquier error previo
         LAST_CONNECTION_ERROR = None
         return client
     except json.JSONDecodeError as json_err:
@@ -133,12 +128,10 @@ def inicializar_hoja_calculo():
             sh = client.create(SPREADSHEET_NAME)
         
         ws = sh.get_worksheet(0)
-        # Si la hoja está nueva, inicializamos la fila de cabeceras
         if not ws.row_values(1):
             ws.append_row(["id", "nombre", "presupuesto", "fecha_inicio", "fecha_fin_tentativa", "datos_json"])
         return ws
     except gspread.exceptions.APIError as api_err:
-        # Captura específica de permisos (por ejemplo, si no se ha compartido la hoja con el correo de la cuenta de servicio)
         LAST_CONNECTION_ERROR = f"Error de Google API (¿Compartiste la hoja con el correo de la Cuenta de Servicio?): {str(api_err)}"
         print("Error de permisos/API de Google Sheets:", api_err)
         return None
@@ -189,7 +182,6 @@ def guardar_proyecto_en_sheets(p_id, proyecto):
             "actividades": proyecto["actividades"]
         })
         
-        # Buscar si ya existe la fila en la columna 1 (id)
         celdas = ws.findall(p_id, in_column=1)
         if celdas:
             row_num = celdas[0].row
@@ -199,7 +191,6 @@ def guardar_proyecto_en_sheets(p_id, proyecto):
             ws.update_cell(row_num, 5, proyecto["fecha_fin_tentativa"])
             ws.update_cell(row_num, 6, datos_json)
         else:
-            # Insertar nueva fila
             ws.append_row([
                 p_id,
                 proyecto["nombre"],
@@ -392,7 +383,7 @@ INDEX_HTML = """
                     {% endif %}
                 </div>
                 {% endif %}
-                <div class="text-[10px] md:text-xs text-slate-400">v2.5 | Móvil</div>
+                <div class="text-[10px] md:text-xs text-slate-400">v2.6 | Móvil</div>
             </div>
         </div>
     </nav>
@@ -589,7 +580,12 @@ INDEX_HTML = """
                                                 <div class="h-1 rounded-full {% if act.cumplimiento_pct_real > 100 %}bg-rose-500{% elif act.cumplimiento_pct_real > 85 %}bg-amber-500{% else %}bg-emerald-500{% endif %}" style="width: {{act.cumplimiento_pct}}%"></div>
                                             </div>
                                         </div>
-                                        <div class="flex items-center gap-2 w-full sm:w-auto justify-end border-t pt-2 sm:border-t-0 sm:pt-0">
+                                        <div class="flex items-center gap-1.5 w-full sm:w-auto justify-end border-t pt-2 sm:border-t-0 sm:pt-0 flex-wrap">
+                                            <!-- BOTÓN EDITAR ACTIVIDAD -->
+                                            <button onclick="openEditarActividad('{{act.id}}', {{ act.nombre|tojson|safe }}, '{{act.presupuesto_tentativo}}', {{ act.descripcion|tojson|safe }})" class="bg-slate-50 hover:bg-slate-200 border border-slate-300 text-slate-700 p-2 rounded-lg transition flex items-center gap-1 text-[11px] font-bold" title="Editar Detalles de la Actividad">
+                                                <i class="fa-solid fa-pen text-sm text-indigo-600"></i> Editar
+                                            </button>
+                                            
                                             <button onclick="openRecurso('{{act.id}}', '{{act.nombre}}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-2 rounded-lg transition flex items-center gap-1 text-[11px] font-bold" title="Asignar Suministro o Mano de Obra">
                                                 <i class="fa-solid fa-plus-circle text-sm"></i> Asignar
                                             </button>
@@ -609,7 +605,7 @@ INDEX_HTML = """
                                                     <th class="pb-2 text-right">Cantidad / Desembolso</th>
                                                     <th class="pb-2 text-right">Precio unitario</th>
                                                     <th class="pb-2 text-right">Costo Total</th>
-                                                    <th class="pb-2 text-center">Devolver</th>
+                                                    <th class="pb-2 text-center">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody class="divide-y divide-slate-100">
@@ -655,11 +651,18 @@ INDEX_HTML = """
                                                             {% endif %}
                                                         </td>
                                                         <td class="py-2.5 text-center">
-                                                            <a href="/recursos/{{proyecto.id}}/{{act.id}}/{{r.id}}/eliminar?tab=resumen" 
-                                                               onclick="return confirm('¿Deseas remover este recurso de la actividad?')" 
-                                                               class="text-rose-500 hover:text-rose-700 transition" title="Devolver al Pool">
-                                                                <i class="fa-solid fa-trash-arrow-up text-sm"></i>
-                                                            </a>
+                                                            <div class="flex items-center justify-center gap-3">
+                                                                <!-- BOTÓN EDITAR CANTIDAD DE INSUMO / MONTO DE PAGO -->
+                                                                <button onclick="openEditarRecursoAsignado('{{act.id}}', '{{r.id}}', {{ r.nombre|tojson|safe }}, '{{r.tipo}}', '{{ r.monto if r.tipo == 'mano_de_obra' else r.cantidad }}', '{{ r.fecha_pago if r.tipo == 'mano_de_obra' else '' }}')" class="text-indigo-600 hover:text-indigo-800 transition" title="Editar Asignación">
+                                                                    <i class="fa-solid fa-pen text-sm"></i>
+                                                                </button>
+                                                                
+                                                                <a href="/recursos/{{proyecto.id}}/{{act.id}}/{{r.id}}/eliminar?tab=resumen" 
+                                                                   onclick="return confirm('¿Deseas remover este recurso de la actividad?')" 
+                                                                   class="text-rose-500 hover:text-rose-700 transition" title="Devolver al Pool">
+                                                                    <i class="fa-solid fa-trash-arrow-up text-sm"></i>
+                                                                </a>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                     {% endfor %}
@@ -695,7 +698,13 @@ INDEX_HTML = """
                                     {% for act in proyecto.actividades %}
                                         {% if act.estado == 'Pendiente' %}
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200/80 space-y-2 relative">
-                                                <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
+                                                <div class="flex justify-between items-start gap-2">
+                                                    <h4 class="font-bold text-slate-900 text-sm flex-grow">{{ act.nombre }}</h4>
+                                                    <!-- BOTÓN EDITAR EN TARJETA KANBAN -->
+                                                    <button onclick="openEditarActividad('{{act.id}}', {{ act.nombre|tojson|safe }}, '{{act.presupuesto_tentativo}}', {{ act.descripcion|tojson|safe }})" class="text-slate-400 hover:text-indigo-600 transition" title="Editar Actividad">
+                                                        <i class="fa-solid fa-pen text-xs"></i>
+                                                    </button>
+                                                </div>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
                                                 <div class="text-[10px] text-indigo-600 font-bold">
                                                     Ppto: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
@@ -722,7 +731,13 @@ INDEX_HTML = """
                                     {% for act in proyecto.actividades %}
                                         {% if act.estado == 'Iniciada' %}
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-200 space-y-2 relative">
-                                                <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
+                                                <div class="flex justify-between items-start gap-2">
+                                                    <h4 class="font-bold text-slate-900 text-sm flex-grow">{{ act.nombre }}</h4>
+                                                    <!-- BOTÓN EDITAR EN TARJETA KANBAN -->
+                                                    <button onclick="openEditarActividad('{{act.id}}', {{ act.nombre|tojson|safe }}, '{{act.presupuesto_tentativo}}', {{ act.descripcion|tojson|safe }})" class="text-slate-400 hover:text-indigo-600 transition" title="Editar Actividad">
+                                                        <i class="fa-solid fa-pen text-xs"></i>
+                                                    </button>
+                                                </div>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
                                                 <div class="text-[10px] text-indigo-600 font-bold">
                                                     Ppto: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
@@ -752,7 +767,13 @@ INDEX_HTML = """
                                     {% for act in proyecto.actividades %}
                                         {% if act.estado == 'Completada' %}
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-emerald-200 space-y-2 relative">
-                                                <h4 class="font-bold text-slate-900 text-sm">{{ act.nombre }}</h4>
+                                                <div class="flex justify-between items-start gap-2">
+                                                    <h4 class="font-bold text-slate-900 text-sm flex-grow">{{ act.nombre }}</h4>
+                                                    <!-- BOTÓN EDITAR EN TARJETA KANBAN -->
+                                                    <button onclick="openEditarActividad('{{act.id}}', {{ act.nombre|tojson|safe }}, '{{act.presupuesto_tentativo}}', {{ act.descripcion|tojson|safe }})" class="text-slate-400 hover:text-indigo-600 transition" title="Editar Actividad">
+                                                        <i class="fa-solid fa-pen text-xs"></i>
+                                                    </button>
+                                                </div>
                                                 <p class="text-[11px] text-slate-500 line-clamp-2">{{ act.descripcion or 'Sin descripción.' }}</p>
                                                 <div class="text-[10px] text-indigo-600 font-bold">
                                                     Ppto: ${{"{:,.2f}".format(act.presupuesto_tentativo)}}
@@ -804,7 +825,7 @@ INDEX_HTML = """
                         <div class="bg-white p-4 md:p-6 rounded-3xl border shadow-sm">
                             <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mb-4">
                                 <h3 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">
-                                    <i class="fa-solid fa-boxes-stacked text-amber-500"></i> Inventario y Fondos de Mano de Obra
+                                    <i class="fa-solid fa-boxes-stacked text-amber-500"></i> Inventario y Adquisición de Recursos
                                 </h3>
                                 <button onclick="document.getElementById('modal-pool').style.display='flex'" class="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl transition shadow-md">
                                     + Adquirir Recurso o Fondos
@@ -866,11 +887,18 @@ INDEX_HTML = """
                                                     {% endif %}
                                                 </td>
                                                 <td class="py-2.5 text-center">
-                                                    <a href="/proyectos/{{proyecto.id}}/recursos-pool/{{r.id}}/eliminar" 
-                                                       onclick="return confirm('¿Seguro que deseas eliminar este recurso del inventario general?')"
-                                                       class="text-rose-500 hover:text-rose-700">
-                                                        <i class="fa-solid fa-trash-can text-base"></i>
-                                                    </a>
+                                                    <div class="flex items-center justify-center gap-2.5">
+                                                        <!-- BOTÓN EDITAR EN INVENTARIO (POOL DE ADQUISICIÓN) -->
+                                                        <button onclick="openEditarRecursoPool('{{r.id}}', {{ r.nombre|tojson|safe }}, '{{r.tipo}}', '{{r.precio if r.tipo == 'material' else ''}}', '{{r.cantidad_total if r.tipo == 'material' else ''}}', '{{r.monto_total if r.tipo == 'mano_de_obra' else ''}}')" class="text-indigo-600 hover:text-indigo-800 transition shadow-sm" title="Editar recurso / fondo">
+                                                            <i class="fa-solid fa-pen text-base"></i>
+                                                        </button>
+                                                        
+                                                        <a href="/proyectos/{{proyecto.id}}/recursos-pool/{{r.id}}/eliminar" 
+                                                           onclick="return confirm('¿Seguro que deseas eliminar este recurso del inventario general?')"
+                                                           class="text-rose-500 hover:text-rose-700">
+                                                            <i class="fa-solid fa-trash-can text-base"></i>
+                                                        </a>
+                                                    </div>
                                                 </td>
                                             </tr>
                                             {% endfor %}
@@ -908,6 +936,33 @@ INDEX_HTML = """
                 <div class="flex gap-2 pt-2">
                     <button type="button" onclick="document.getElementById('modal-act').style.display='none'" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition">Cancelar</button>
                     <button class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg transition">Guardar Actividad</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Editar Actividad -->
+    <div id="modal-editar-act" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white p-6 md:p-8 rounded-3xl max-w-md w-full shadow-2xl">
+            <h3 class="text-lg md:text-xl font-bold mb-4 text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-pen text-indigo-600"></i> Editar Actividad
+            </h3>
+            <form id="form-editar-act" method="POST" class="space-y-4 text-sm">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre de la actividad</label>
+                    <input type="text" name="nombre" id="edit-act-nombre" class="w-full p-2.5 border rounded-xl" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Presupuesto Estimado / Tentativo ($)</label>
+                    <input type="number" step="0.01" name="presupuesto_tentativo" id="edit-act-presupuesto" class="w-full p-2.5 border rounded-xl" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Descripción</label>
+                    <textarea name="descripcion" id="edit-act-descripcion" rows="2" class="w-full p-2.5 border rounded-xl"></textarea>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="document.getElementById('modal-editar-act').style.display='none'" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition">Cancelar</button>
+                    <button class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg transition">Actualizar</button>
                 </div>
             </form>
         </div>
@@ -1033,6 +1088,74 @@ INDEX_HTML = """
         </div>
     </div>
 
+    <!-- Modal: Editar Recurso Asignado (Insumo / Mano de Obra en la Actividad) -->
+    <div id="modal-editar-rec-asignado" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white p-6 md:p-8 rounded-3xl max-w-md w-full shadow-2xl">
+            <h3 class="text-lg md:text-xl font-bold mb-2 text-slate-900"><i class="fa-solid fa-pen text-indigo-600"></i> Editar Asignación</h3>
+            <p class="text-xs text-slate-500 mb-4">Recurso: <strong id="edit-rec-target-name" class="text-slate-800"></strong></p>
+            
+            <form id="form-editar-rec-asignado" method="POST" class="space-y-4 text-sm">
+                <div id="edit-rec-fields-material" class="hidden">
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cantidad Asignada</label>
+                    <input type="number" name="cantidad" id="edit-input-cantidad-rec" min="1" class="w-full p-2.5 border rounded-xl">
+                </div>
+
+                <div id="edit-rec-fields-labor" class="hidden space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Monto de Pago ($)</label>
+                        <input type="number" step="0.01" name="monto" id="edit-input-monto-rec" class="w-full p-2.5 border rounded-xl">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha de Ejecución de Pago</label>
+                        <input type="date" name="fecha_pago" id="edit-input-fecha-pago-rec" class="w-full p-2.5 border rounded-xl">
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="document.getElementById('modal-editar-rec-asignado').style.display='none'" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition">Cancelar</button>
+                    <button class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg transition">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Editar Recurso en el Pool (Adquisición de Recursos) -->
+    <div id="modal-editar-pool" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white p-6 md:p-8 rounded-3xl max-w-md w-full shadow-2xl">
+            <h3 class="text-lg md:text-xl font-bold mb-4 text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-pen text-amber-500"></i> Editar Recurso de Inventario
+            </h3>
+            <form id="form-editar-pool" method="POST" class="space-y-4 text-sm">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre del Recurso / Fondo</label>
+                    <input type="text" name="nombre" id="edit-pool-nombre" class="w-full p-2.5 border rounded-xl" required>
+                </div>
+                
+                <div id="edit-pool-fields-material" class="grid grid-cols-2 gap-3 hidden">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Precio Unitario ($)</label>
+                        <input type="number" step="0.01" name="precio" id="edit-pool-precio" class="w-full p-2.5 border rounded-xl">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cantidad Total (Stock)</label>
+                        <input type="number" name="cantidad_total" id="edit-pool-cantidad" min="1" class="w-full p-2.5 border rounded-xl">
+                    </div>
+                </div>
+
+                <div id="edit-pool-fields-labor" class="hidden">
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 font-semibold text-amber-600">Presupuesto/Fondo de Pago ($)</label>
+                    <input type="number" step="0.01" name="monto_total" id="edit-pool-monto-total" class="w-full p-2.5 border border-amber-300 rounded-xl bg-amber-50/50">
+                    <p class="text-[10px] text-slate-400 mt-1">Defina el dinero total disponible para pagar mano de obra.</p>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="document.getElementById('modal-editar-pool').style.display='none'" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition">Cancelar</button>
+                    <button class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg transition">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Scripts de navegación y lógica interactiva de formularios -->
     <script>
         const recursosPool = {{ proyecto.recursos_pool|tojson|safe if proyecto else '[]' }};
@@ -1040,11 +1163,9 @@ INDEX_HTML = """
         const inactiveTabClass = "whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold bg-white text-slate-600 hover:text-indigo-600 rounded-xl hover:bg-slate-50 border border-slate-200 shadow-sm transition";
 
         window.onload = function() {
-            // Mover contenido de la barra lateral al contenedor móvil si está en pantalla angosta
             adjustResponsiveSidebar();
             window.addEventListener('resize', adjustResponsiveSidebar);
 
-            // Lee el tab activo de la URL, si no está definido va por defecto a resumen
             const urlParams = new URLSearchParams(window.location.search);
             const activeTab = urlParams.get('tab') || 'resumen';
             switchTab(activeTab);
@@ -1067,52 +1188,41 @@ INDEX_HTML = """
             const desktopContainer = document.getElementById('main-desktop-sidebar');
             const mobileContainer = document.getElementById('mobile-sidebar-container');
             
-            // Inicializar el contenido del sidebar si no se ha extraído
             let content = document.getElementById('sidebar-content');
             
             if (window.innerWidth < 1024) {
-                // Modo móvil: mover contenido al acordeón móvil
                 const mobileTarget = document.getElementById('mobile-sidebar-target');
                 if (content && mobileTarget && !mobileTarget.contains(content)) {
                     mobileTarget.appendChild(content);
                 }
             } else {
-                // Modo PC: devolver contenido al aside original
                 const desktopAside = document.getElementById('main-sidebar');
                 if (content && desktopAside && !desktopAside.contains(content)) {
                     desktopAside.appendChild(content);
                 }
-                // Ocultar el colapsable móvil por si acaso
                 document.getElementById('mobile-sidebar-container').classList.add('hidden');
                 document.getElementById('mobile-sidebar-chevron').classList.remove('rotate-180');
             }
         }
 
         function switchTab(tabName) {
-            // Ocultar todos los paneles
             document.getElementById('panel-resumen').classList.add('hidden');
             document.getElementById('panel-kanban').classList.add('hidden');
             document.getElementById('panel-gantt').classList.add('hidden');
             document.getElementById('panel-inventario').classList.add('hidden');
             
-            // Quitar estilos activos de los botones
             document.getElementById('tab-btn-resumen').className = inactiveTabClass;
             document.getElementById('tab-btn-kanban').className = inactiveTabClass;
             document.getElementById('tab-btn-gantt').className = inactiveTabClass;
             document.getElementById('tab-btn-inventario').className = inactiveTabClass;
             
-            // Mostrar panel objetivo
             document.getElementById('panel-' + tabName).classList.remove('hidden');
-            
-            // Resaltar botón activo
             document.getElementById('tab-btn-' + tabName).className = activeTabClass;
             
-            // Actualizar URL sin recargar la página para una experiencia SPA impecable
             const url = new URL(window.location);
             url.searchParams.set('tab', tabName);
             window.history.replaceState({}, '', url);
 
-            // Re-renderizado GANTT
             if (tabName === 'gantt') {
                 setTimeout(async () => {
                     const ganttContainer = document.getElementById('gantt-container');
@@ -1243,6 +1353,87 @@ INDEX_HTML = """
             };
             
             document.getElementById('modal-rec').style.display = 'flex';
+        }
+
+        // --- FUNCIONES JS PARA MODALES DE EDICIÓN ---
+
+        function openEditarActividad(id, nombre, presupuesto, descripcion) {
+            document.getElementById('edit-act-nombre').value = nombre;
+            document.getElementById('edit-act-presupuesto').value = parseFloat(presupuesto);
+            document.getElementById('edit-act-descripcion').value = descripcion;
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const activeTab = urlParams.get('tab') || 'resumen';
+            document.getElementById('form-editar-act').action = `/actividades/{{proyecto.id if proyecto else ''}}/${id}/editar?tab=${activeTab}`;
+            
+            document.getElementById('modal-editar-act').style.display = 'flex';
+        }
+
+        function openEditarRecursoAsignado(actId, recId, nombre, tipo, valorActual, extraInfo) {
+            document.getElementById('edit-rec-target-name').innerText = nombre;
+            
+            const divMaterial = document.getElementById('edit-rec-fields-material');
+            const divLabor = document.getElementById('edit-rec-fields-labor');
+            const inputCant = document.getElementById('edit-input-cantidad-rec');
+            const inputMonto = document.getElementById('edit-input-monto-rec');
+            const inputFechaPago = document.getElementById('edit-input-fecha-pago-rec');
+            
+            if (tipo === 'mano_de_obra') {
+                divMaterial.classList.add('hidden');
+                divLabor.classList.remove('hidden');
+                inputCant.required = false;
+                inputMonto.required = true;
+                inputFechaPago.required = true;
+                
+                inputMonto.value = valorActual;
+                inputFechaPago.value = extraInfo;
+            } else {
+                divMaterial.classList.remove('hidden');
+                divLabor.classList.add('hidden');
+                inputCant.required = true;
+                inputMonto.required = false;
+                inputFechaPago.required = false;
+                
+                inputCant.value = valorActual;
+            }
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const activeTab = urlParams.get('tab') || 'resumen';
+            document.getElementById('form-editar-rec-asignado').action = `/recursos/{{proyecto.id if proyecto else ''}}/${actId}/${recId}/editar?tab=${activeTab}`;
+            
+            document.getElementById('modal-editar-rec-asignado').style.display = 'flex';
+        }
+
+        function openEditarRecursoPool(rpId, nombre, tipo, precio, cantidadTotal, montoTotal) {
+            document.getElementById('edit-pool-nombre').value = nombre;
+            
+            const divMaterial = document.getElementById('edit-pool-fields-material');
+            const divLabor = document.getElementById('edit-pool-fields-labor');
+            const inputPrecio = document.getElementById('edit-pool-precio');
+            const inputCantidad = document.getElementById('edit-pool-cantidad');
+            const inputMonto = document.getElementById('edit-pool-monto-total');
+            
+            if (tipo === 'mano_de_obra') {
+                divMaterial.classList.add('hidden');
+                divLabor.classList.remove('hidden');
+                inputPrecio.required = false;
+                inputCantidad.required = false;
+                inputMonto.required = true;
+                
+                inputMonto.value = montoTotal;
+            } else {
+                divMaterial.classList.remove('hidden');
+                divLabor.classList.add('hidden');
+                inputPrecio.required = true;
+                inputCantidad.required = true;
+                inputMonto.required = false;
+                
+                inputPrecio.value = precio;
+                inputCantidad.value = cantidadTotal;
+            }
+            
+            document.getElementById('form-editar-pool').action = `/proyectos/{{proyecto.id if proyecto else ''}}/recursos-pool/${rpId}/editar`;
+            document.getElementById('modal-editar-pool').style.display = 'flex';
         }
 
         function openTransition(id, nombre, estadoActual, fIni, fFin) {
@@ -1381,6 +1572,58 @@ def add_recurso_pool(p_id):
             
     return redirect(url_for("index", id=p_id, tab="inventario"))
 
+@app.route("/proyectos/<p_id>/recursos-pool/<rp_id>/editar", methods=["POST"])
+def editar_recurso_pool(p_id, rp_id):
+    """Permite editar los detalles de un recurso o fondo del inventario (Adquisición de recursos)"""
+    p = PROYECTOS_DB.get(p_id)
+    if p:
+        recurso = next((r for r in p.get("recursos_pool", []) if r["id"] == rp_id), None)
+        if recurso:
+            nombre = request.form["nombre"]
+            recurso["nombre"] = nombre
+            
+            # Sincronizar el nombre en todas las asignaciones existentes en las actividades
+            for act in p.get("actividades", []):
+                for r in act.get("recursos", []):
+                    if r.get("pool_id") == rp_id:
+                        r["nombre"] = nombre
+            
+            if recurso["tipo"] == "mano_de_obra":
+                nuevo_monto_total = float(request.form["monto_total"])
+                # Calcular el monto que ya se encuentra asignado/comprometido en actividades
+                monto_asignado = sum(float(r["monto"]) for act in p["actividades"] for r in act["recursos"] if r.get("pool_id") == rp_id)
+                
+                if nuevo_monto_total < monto_asignado:
+                    flash(f"No es posible reducir el fondo por debajo del monto asignado en actividades (${monto_asignado:,.2f}).", "error")
+                else:
+                    recurso["monto_total"] = nuevo_monto_total
+                    recurso["monto_disponible"] = nuevo_monto_total - monto_asignado
+                    flash(f"Fondo '{nombre}' actualizado correctamente en el inventario.", "success")
+            else:
+                precio = float(request.form["precio"])
+                nueva_cantidad_total = int(request.form["cantidad_total"])
+                # Calcular las unidades físicas ya asignadas/comprometidas
+                cantidad_asignada = sum(int(r["cantidad"]) for act in p["actividades"] for r in act["recursos"] if r.get("pool_id") == rp_id)
+                
+                if nueva_cantidad_total < cantidad_asignada:
+                    flash(f"No es posible reducir el stock por debajo de las unidades ya asignadas ({cantidad_asignada}).", "error")
+                else:
+                    recurso["precio"] = precio
+                    recurso["cantidad_total"] = nueva_cantidad_total
+                    recurso["cantidad_disponible"] = nueva_cantidad_total - cantidad_asignada
+                    
+                    # Sincronizar el precio unitario en las actividades asignadas
+                    for act in p["actividades"]:
+                        for r in act["recursos"]:
+                            if r.get("pool_id") == rp_id:
+                                r["precio"] = precio
+                                
+                    flash(f"Material '{nombre}' actualizado correctamente en el inventario.", "success")
+                    
+            guardar_proyecto_en_sheets(p_id, p)
+            
+    return redirect(url_for("index", id=p_id, tab="inventario"))
+
 @app.route("/proyectos/<p_id>/recursos-pool/<rp_id>/eliminar")
 def eliminar_recurso_pool(p_id, rp_id):
     p = PROYECTOS_DB.get(p_id)
@@ -1423,6 +1666,23 @@ def crear_act(p_id):
         flash(f"Actividad '{nombre_act}' guardada como Pendiente en el Kanban.", "success")
     return redirect(url_for("index", id=p_id, tab="kanban"))
 
+@app.route("/actividades/<p_id>/<act_id>/editar", methods=["POST"])
+def editar_act(p_id, act_id):
+    """Permite editar los detalles de la actividad (Presupuesto tentativo, Nombre, Descripción)"""
+    p = PROYECTOS_DB.get(p_id)
+    if p:
+        actividad = next((act for act in p["actividades"] if act["id"] == act_id), None)
+        if actividad:
+            actividad["nombre"] = request.form["nombre"]
+            actividad["presupuesto_tentativo"] = float(request.form["presupuesto_tentativo"])
+            actividad["descripcion"] = request.form.get("descripcion", "")
+            
+            guardar_proyecto_en_sheets(p_id, p)
+            flash(f"Actividad '{actividad['nombre']}' actualizada correctamente.", "success")
+            
+    tab = request.args.get("tab", "resumen")
+    return redirect(url_for("index", id=p_id, tab=tab))
+
 @app.route("/actividades/<p_id>/<act_id>/eliminar", methods=["GET"])
 def eliminar_act(p_id, act_id):
     p = PROYECTOS_DB.get(p_id)
@@ -1436,7 +1696,7 @@ def eliminar_act(p_id, act_id):
                         pool_item["monto_disponible"] += r["monto"]
                     else:
                         pool_item["cantidad_disponible"] += r["cantidad"]
-                    
+                        
         p["actividades"] = [act for act in p["actividades"] if act["id"] != act_id]
         guardar_proyecto_en_sheets(p_id, p)
         flash("Actividad removida y sus recursos liberados al pool.", "success")
@@ -1530,6 +1790,53 @@ def add_rec(p_id, act_id):
                     
         guardar_proyecto_en_sheets(p_id, p)
                     
+    tab = request.args.get("tab", "resumen")
+    return redirect(url_for("index", id=p_id, tab=tab))
+
+@app.route("/recursos/<p_id>/<act_id>/<rec_id>/editar", methods=["POST"])
+def editar_rec_asignado(p_id, act_id, rec_id):
+    """Permite editar la asignación de un recurso (cantidad física o monto de dinero)"""
+    p = PROYECTOS_DB.get(p_id)
+    if p:
+        actividad = next((act for act in p["actividades"] if act["id"] == act_id), None)
+        if actividad:
+            recurso_act = next((r for r in actividad["recursos"] if r["id"] == rec_id), None)
+            if recurso_act:
+                pool_id = recurso_act.get("pool_id")
+                pool_item = next((r for r in p.get("recursos_pool", []) if r["id"] == pool_id), None)
+                
+                if pool_item:
+                    if recurso_act["tipo"] == "mano_de_obra":
+                        monto_actual = float(recurso_act["monto"])
+                        nuevo_monto = float(request.form["monto"])
+                        fecha_pago = request.form.get("fecha_pago")
+                        
+                        # Simular devolución temporal para validar el saldo del pool
+                        monto_maximo_disponible = pool_item["monto_disponible"] + monto_actual
+                        if nuevo_monto > monto_maximo_disponible:
+                            flash(f"Fondos insuficientes en el Pool. Máximo disponible: ${monto_maximo_disponible:,.2f}", "error")
+                        else:
+                            pool_item["monto_disponible"] = monto_maximo_disponible - nuevo_monto
+                            recurso_act["monto"] = nuevo_monto
+                            recurso_act["fecha_pago"] = fecha_pago
+                            flash("Pago de mano de obra actualizado de forma exitosa.", "success")
+                    else:
+                        cantidad_actual = int(recurso_act["cantidad"])
+                        nueva_cantidad = int(request.form["cantidad"])
+                        
+                        # Simular devolución temporal del stock de insumo
+                        stock_maximo_disponible = pool_item["cantidad_disponible"] + cantidad_actual
+                        if nueva_cantidad > stock_maximo_disponible:
+                            flash(f"Stock de insumo insuficiente en el Pool. Máximo disponible: {stock_maximo_disponible} unidades", "error")
+                        else:
+                            pool_item["cantidad_disponible"] = stock_maximo_disponible - nueva_cantidad
+                            recurso_act["cantidad"] = nueva_cantidad
+                            flash("Cantidad de insumo asignada actualizada de forma exitosa.", "success")
+                else:
+                    flash("El recurso seleccionado ya no existe en el inventario general.", "error")
+                    
+            guardar_proyecto_en_sheets(p_id, p)
+            
     tab = request.args.get("tab", "resumen")
     return redirect(url_for("index", id=p_id, tab=tab))
 
