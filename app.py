@@ -581,8 +581,8 @@ INDEX_HTML = """
                                             </div>
                                         </div>
                                         <div class="flex items-center gap-1.5 w-full sm:w-auto justify-end border-t pt-2 sm:border-t-0 sm:pt-0 flex-wrap">
-                                            <!-- BOTÓN EDITAR ACTIVIDAD -->
-                                            <button onclick="openEditarActividad('{{act.id}}', {{ act.nombre|tojson|safe }}, '{{act.presupuesto_tentativo}}', {{ act.descripcion|tojson|safe }})" class="bg-slate-50 hover:bg-slate-200 border border-slate-300 text-slate-700 p-2 rounded-lg transition flex items-center gap-1 text-[11px] font-bold" title="Editar Detalles de la Actividad">
+                                            <!-- BOTÓN EDITAR ACTIVIDAD (Corregidas las comillas externas para permitir tojson) -->
+                                            <button onclick='openEditarActividad("{{act.id}}", {{ act.nombre|tojson|safe }}, "{{act.presupuesto_tentativo}}", {{ act.descripcion|tojson|safe }})' class="bg-slate-50 hover:bg-slate-200 border border-slate-300 text-slate-700 p-2 rounded-lg transition flex items-center gap-1 text-[11px] font-bold" title="Editar Detalles de la Actividad">
                                                 <i class="fa-solid fa-pen text-sm text-indigo-600"></i> Editar
                                             </button>
                                             
@@ -652,8 +652,8 @@ INDEX_HTML = """
                                                         </td>
                                                         <td class="py-2.5 text-center">
                                                             <div class="flex items-center justify-center gap-3">
-                                                                <!-- BOTÓN EDITAR CANTIDAD DE INSUMO / MONTO DE PAGO -->
-                                                                <button onclick="openEditarRecursoAsignado('{{act.id}}', '{{r.id}}', {{ r.nombre|tojson|safe }}, '{{r.tipo}}', '{{ r.monto if r.tipo == 'mano_de_obra' else r.cantidad }}', '{{ r.fecha_pago if r.tipo == 'mano_de_obra' else '' }}')" class="text-indigo-600 hover:text-indigo-800 transition" title="Editar Asignación">
+                                                                <!-- BOTÓN EDITAR ASIGNACIÓN (Corregidas las comillas externas de onclick) -->
+                                                                <button onclick='openEditarRecursoAsignado("{{act.id}}", "{{r.id}}", {{ r.nombre|tojson|safe }}, "{{r.tipo}}", "{{ r.monto if r.tipo == "mano_de_obra" else r.cantidad }}", "{{ r.fecha_pago if r.tipo == "mano_de_obra" else "" }}")' class="text-indigo-600 hover:text-indigo-800 transition" title="Editar Asignación">
                                                                     <i class="fa-solid fa-pen text-sm"></i>
                                                                 </button>
                                                                 
@@ -700,8 +700,8 @@ INDEX_HTML = """
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200/80 space-y-2 relative">
                                                 <div class="flex justify-between items-start gap-2">
                                                     <h4 class="font-bold text-slate-900 text-sm flex-grow">{{ act.nombre }}</h4>
-                                                    <!-- BOTÓN EDITAR EN TARJETA KANBAN -->
-                                                    <button onclick="openEditarActividad('{{act.id}}', {{ act.nombre|tojson|safe }}, '{{act.presupuesto_tentativo}}', {{ act.descripcion|tojson|safe }})" class="text-slate-400 hover:text-indigo-600 transition" title="Editar Actividad">
+                                                    <!-- BOTÓN EDITAR EN TARJETA KANBAN (Corregido) -->
+                                                    <button onclick='openEditarActividad("{{act.id}}", {{ act.nombre|tojson|safe }}, "{{act.presupuesto_tentativo}}", {{ act.descripcion|tojson|safe }})' class="text-slate-400 hover:text-indigo-600 transition" title="Editar Actividad">
                                                         <i class="fa-solid fa-pen text-xs"></i>
                                                     </button>
                                                 </div>
@@ -733,8 +733,8 @@ INDEX_HTML = """
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-200 space-y-2 relative">
                                                 <div class="flex justify-between items-start gap-2">
                                                     <h4 class="font-bold text-slate-900 text-sm flex-grow">{{ act.nombre }}</h4>
-                                                    <!-- BOTÓN EDITAR EN TARJETA KANBAN -->
-                                                    <button onclick="openEditarActividad('{{act.id}}', {{ act.nombre|tojson|safe }}, '{{act.presupuesto_tentativo}}', {{ act.descripcion|tojson|safe }})" class="text-slate-400 hover:text-indigo-600 transition" title="Editar Actividad">
+                                                    <!-- BOTÓN EDITAR EN TARJETA KANBAN (Corregido) -->
+                                                    <button onclick='openEditarActividad("{{act.id}}", {{ act.nombre|tojson|safe }}, "{{act.presupuesto_tentativo}}", {{ act.descripcion|tojson|safe }})' class="text-slate-400 hover:text-indigo-600 transition" title="Editar Actividad">
                                                         <i class="fa-solid fa-pen text-xs"></i>
                                                     </button>
                                                 </div>
@@ -769,8 +769,8 @@ INDEX_HTML = """
                                             <div class="bg-white p-4 rounded-xl shadow-sm border border-emerald-200 space-y-2 relative">
                                                 <div class="flex justify-between items-start gap-2">
                                                     <h4 class="font-bold text-slate-900 text-sm flex-grow">{{ act.nombre }}</h4>
-                                                    <!-- BOTÓN EDITAR EN TARJETA KANBAN -->
-                                                    <button onclick="openEditarActividad('{{act.id}}', {{ act.nombre|tojson|safe }}, '{{act.presupuesto_tentativo}}', {{ act.descripcion|tojson|safe }})" class="text-slate-400 hover:text-indigo-600 transition" title="Editar Actividad">
+                                                    <!-- BOTÓN EDITAR EN TARJETA KANBAN (Corregido) -->
+                                                    <button onclick='openEditarActividad("{{act.id}}", {{ act.nombre|tojson|safe }}, "{{act.presupuesto_tentativo}}", {{ act.descripcion|tojson|safe }})' class="text-slate-400 hover:text-indigo-600 transition" title="Editar Actividad">
                                                         <i class="fa-solid fa-pen text-xs"></i>
                                                     </button>
                                                 </div>
@@ -888,8 +888,8 @@ INDEX_HTML = """
                                                 </td>
                                                 <td class="py-2.5 text-center">
                                                     <div class="flex items-center justify-center gap-2.5">
-                                                        <!-- BOTÓN EDITAR EN INVENTARIO (POOL DE ADQUISICIÓN) -->
-                                                        <button onclick="openEditarRecursoPool('{{r.id}}', {{ r.nombre|tojson|safe }}, '{{r.tipo}}', '{{r.precio if r.tipo == 'material' else ''}}', '{{r.cantidad_total if r.tipo == 'material' else ''}}', '{{r.monto_total if r.tipo == 'mano_de_obra' else ''}}')" class="text-indigo-600 hover:text-indigo-800 transition shadow-sm" title="Editar recurso / fondo">
+                                                        <!-- BOTÓN EDITAR EN INVENTARIO (Corregido con comillas externas simples) -->
+                                                        <button onclick='openEditarRecursoPool("{{r.id}}", {{ r.nombre|tojson|safe }}, "{{r.tipo}}", "{{r.precio if r.tipo == "material" else ""}}", "{{r.cantidad_total if r.tipo == "material" else ""}}", "{{r.monto_total if r.tipo == "mano_de_obra" else ""}}")' class="text-indigo-600 hover:text-indigo-800 transition shadow-sm" title="Editar recurso / fondo">
                                                             <i class="fa-solid fa-pen text-base"></i>
                                                         </button>
                                                         
@@ -1040,7 +1040,7 @@ INDEX_HTML = """
 
                 <div class="flex gap-2 pt-2">
                     <button type="button" onclick="document.getElementById('modal-pool').style.display='none'" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition">Cancelar</button>
-                    <button class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg transition">Adquirir</button>
+                    <button class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg transition">Adquirir</button>
                 </div>
             </form>
         </div>
@@ -1591,13 +1591,13 @@ def editar_recurso_pool(p_id, rp_id):
             if recurso["tipo"] == "mano_de_obra":
                 nuevo_monto_total = float(request.form["monto_total"])
                 # Calcular el monto que ya se encuentra asignado/comprometido en actividades
-                monto_asignado = sum(float(r["monto"]) for act in p["actividades"] for r in act["recursos"] if r.get("pool_id") == rp_id)
+                monto_assigned = sum(float(r["monto"]) for act in p["actividades"] for r in act["recursos"] if r.get("pool_id") == rp_id)
                 
-                if nuevo_monto_total < monto_asignado:
-                    flash(f"No es posible reducir el fondo por debajo del monto asignado en actividades (${monto_asignado:,.2f}).", "error")
+                if nuevo_monto_total < monto_assigned:
+                    flash(f"No es posible reducir el fondo por debajo del monto asignado en actividades (${monto_assigned:,.2f}).", "error")
                 else:
                     recurso["monto_total"] = nuevo_monto_total
-                    recurso["monto_disponible"] = nuevo_monto_total - monto_asignado
+                    recurso["monto_disponible"] = nuevo_monto_total - monto_assigned
                     flash(f"Fondo '{nombre}' actualizado correctamente en el inventario.", "success")
             else:
                 precio = float(request.form["precio"])
