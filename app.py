@@ -69,10 +69,7 @@ PROYECTOS_DB = {
     }
 }
 
-# Nombre de la hoja de cálculo de Google Drive
 SPREADSHEET_NAME = "GestorProyectosDB"
-
-# Variable global de depuración para almacenar el estado exacto de la conexión
 LAST_CONNECTION_ERROR = None
 
 def obtener_cliente_sheets():
@@ -524,7 +521,7 @@ INDEX_HTML = """
                         <div class="space-y-4">
                             <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
                                 <h3 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">
-                                    <i class="fa-solid fa-gears text-indigo-600"></i> Desglose de Actividades y Costos
+                                    <i class="fa-solid fa-gears text-indigo-600"></i> Desglose Físico y Costos
                                 </h3>
                                 <button onclick="document.getElementById('modal-act').style.display='flex'" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg transition">+ Crear Actividad</button>
                             </div>
@@ -581,7 +578,11 @@ INDEX_HTML = """
                                             </div>
                                         </div>
                                         <div class="flex items-center gap-1.5 w-full sm:w-auto justify-end border-t pt-2 sm:border-t-0 sm:pt-0 flex-wrap">
-                                            <!-- BOTÓN EDITAR ACTIVIDAD (Corregidas las comillas externas para permitir tojson) -->
+                                            <button onclick="toggleRecursos('{{act.id}}')" class="bg-indigo-500 hover:bg-indigo-600 text-white p-2 rounded-lg transition flex items-center gap-1.5 text-[11px] font-bold shadow-sm" title="Mostrar u Ocultar lista de materiales e insumos asignados">
+                                                <i id="icon-toggle-{{act.id}}" class="fa-solid fa-chevron-down transition-transform duration-200"></i>
+                                                <span>Ver Insumos ({{ act.recursos|length }})</span>
+                                            </button>
+
                                             <button onclick='openEditarActividad("{{act.id}}", {{ act.nombre|tojson|safe }}, "{{act.presupuesto_tentativo}}", {{ act.descripcion|tojson|safe }})' class="bg-slate-50 hover:bg-slate-200 border border-slate-300 text-slate-700 p-2 rounded-lg transition flex items-center gap-1 text-[11px] font-bold" title="Editar Detalles de la Actividad">
                                                 <i class="fa-solid fa-pen text-sm text-indigo-600"></i> Editar
                                             </button>
@@ -596,7 +597,8 @@ INDEX_HTML = """
                                             </a>
                                         </div>
                                     </div>
-                                    <div class="p-0 sm:p-4 overflow-x-auto">
+                                    
+                                    <div id="recursos-container-{{act.id}}" class="hidden p-0 sm:p-4 overflow-x-auto border-t bg-slate-50/50 transition-all duration-300">
                                         <table class="w-full min-w-[500px] text-xs text-left">
                                             <thead>
                                                 <tr class="text-slate-400 border-b font-semibold uppercase px-4 py-2">
@@ -611,7 +613,7 @@ INDEX_HTML = """
                                             <tbody class="divide-y divide-slate-100">
                                                 {% if not act.recursos %}
                                                     <tr>
-                                                        <td colspan="6" class="py-4 text-center text-slate-400 italic">No hay recursos ni mano de obra asignada.</td>
+                                                        <td colspan="6" class="py-4 text-center text-slate-400 italic">No hay recursos ni mano de obra asignada. ¡Usa el botón "Asignar" para consumirlos de tu pool de inventario!</td>
                                                     </tr>
                                                 {% else %}
                                                     {% for r in act.recursos %}
@@ -652,7 +654,7 @@ INDEX_HTML = """
                                                         </td>
                                                         <td class="py-2.5 text-center">
                                                             <div class="flex items-center justify-center gap-3">
-                                                                <!-- BOTÓN EDITAR ASIGNACIÓN (Corregidas las comillas externas de onclick) -->
+                                                                <!-- BOTÓN EDITAR ASIGNACIÓN -->
                                                                 <button onclick='openEditarRecursoAsignado("{{act.id}}", "{{r.id}}", {{ r.nombre|tojson|safe }}, "{{r.tipo}}", "{{ r.monto if r.tipo == "mano_de_obra" else r.cantidad }}", "{{ r.fecha_pago if r.tipo == "mano_de_obra" else "" }}")' class="text-indigo-600 hover:text-indigo-800 transition" title="Editar Asignación">
                                                                     <i class="fa-solid fa-pen text-sm"></i>
                                                                 </button>
@@ -1156,7 +1158,6 @@ INDEX_HTML = """
         </div>
     </div>
 
-    <!-- Scripts de navegación y lógica interactiva de formularios -->
     <script>
         const recursosPool = {{ proyecto.recursos_pool|tojson|safe if proyecto else '[]' }};
         const activeTabClass = "whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-bold bg-indigo-600 text-white rounded-xl shadow-md border-b-2 border-indigo-700 transition";
@@ -1180,6 +1181,20 @@ INDEX_HTML = """
             } else {
                 container.classList.add('hidden');
                 chevron.classList.remove('rotate-180');
+            }
+        }
+
+        function toggleRecursos(actId) {
+            const container = document.getElementById('recursos-container-' + actId);
+            const icon = document.getElementById('icon-toggle-' + actId);
+            if (container) {
+                if (container.classList.contains('hidden')) {
+                    container.classList.remove('hidden');
+                    if (icon) icon.classList.add('rotate-180');
+                } else {
+                    container.classList.add('hidden');
+                    if (icon) icon.classList.remove('rotate-180');
+                }
             }
         }
 
@@ -1537,7 +1552,6 @@ def eliminar_p(p_id):
         flash(f"Se ha eliminado el proyecto '{nombre}' de forma permanente.", "success")
     return redirect(url_for("index"))
 
-# Rutas para el Inventario General (Pool)
 @app.route("/proyectos/<p_id>/recursos-pool", methods=["POST"])
 def add_recurso_pool(p_id):
     p = PROYECTOS_DB.get(p_id)
@@ -1582,7 +1596,6 @@ def editar_recurso_pool(p_id, rp_id):
             nombre = request.form["nombre"]
             recurso["nombre"] = nombre
             
-            # Sincronizar el nombre en todas las asignaciones existentes en las actividades
             for act in p.get("actividades", []):
                 for r in act.get("recursos", []):
                     if r.get("pool_id") == rp_id:
@@ -1590,7 +1603,6 @@ def editar_recurso_pool(p_id, rp_id):
             
             if recurso["tipo"] == "mano_de_obra":
                 nuevo_monto_total = float(request.form["monto_total"])
-                # Calcular el monto que ya se encuentra asignado/comprometido en actividades
                 monto_assigned = sum(float(r["monto"]) for act in p["actividades"] for r in act["recursos"] if r.get("pool_id") == rp_id)
                 
                 if nuevo_monto_total < monto_assigned:
@@ -1602,7 +1614,6 @@ def editar_recurso_pool(p_id, rp_id):
             else:
                 precio = float(request.form["precio"])
                 nueva_cantidad_total = int(request.form["cantidad_total"])
-                # Calcular las unidades físicas ya asignadas/comprometidas
                 cantidad_asignada = sum(int(r["cantidad"]) for act in p["actividades"] for r in act["recursos"] if r.get("pool_id") == rp_id)
                 
                 if nueva_cantidad_total < cantidad_asignada:
@@ -1612,7 +1623,6 @@ def editar_recurso_pool(p_id, rp_id):
                     recurso["cantidad_total"] = nueva_cantidad_total
                     recurso["cantidad_disponible"] = nueva_cantidad_total - cantidad_asignada
                     
-                    # Sincronizar el precio unitario en las actividades asignadas
                     for act in p["actividades"]:
                         for r in act["recursos"]:
                             if r.get("pool_id") == rp_id:
@@ -1811,7 +1821,6 @@ def editar_rec_asignado(p_id, act_id, rec_id):
                         nuevo_monto = float(request.form["monto"])
                         fecha_pago = request.form.get("fecha_pago")
                         
-                        # Simular devolución temporal para validar el saldo del pool
                         monto_maximo_disponible = pool_item["monto_disponible"] + monto_actual
                         if nuevo_monto > monto_maximo_disponible:
                             flash(f"Fondos insuficientes en el Pool. Máximo disponible: ${monto_maximo_disponible:,.2f}", "error")
@@ -1824,7 +1833,6 @@ def editar_rec_asignado(p_id, act_id, rec_id):
                         cantidad_actual = int(recurso_act["cantidad"])
                         nueva_cantidad = int(request.form["cantidad"])
                         
-                        # Simular devolución temporal del stock de insumo
                         stock_maximo_disponible = pool_item["cantidad_disponible"] + cantidad_actual
                         if nueva_cantidad > stock_maximo_disponible:
                             flash(f"Stock de insumo insuficiente en el Pool. Máximo disponible: {stock_maximo_disponible} unidades", "error")
